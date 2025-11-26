@@ -3,117 +3,75 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import { PrismaClient } from "@prisma/client"; // <--- Import Prisma
+import { PrismaClient } from "@prisma/client";
+import { socketConnectionLimiter } from "./middleware/rateLimiter.js";
+import {
+  handleUploadInit,
+  handleJoinRoom,
+  handleSignal,
+  handleTransferStateChange,
+  handlePauseTransfer,
+  handleCancelTransfer,
+  handleResumeTransfer,
+} from "./handlers/socketHandlers.js";
+import { handleTransferComplete } from "./handlers/transferComplete.js";
 
 const app = express();
 app.use(cors());
 
-
 const server = http.createServer(app);
-const prisma = new PrismaClient(); // <--- Initialize Database
+const prisma = new PrismaClient();
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:3000",
     methods: ["GET", "POST"],
   },
 });
 
-// server/index.ts (Update the io.on block)
+// Cleanup old/abandoned sessions every hour
+// (Successful transfers are deleted immediately via transfer-complete event)
+setInterval(async () => {
+  try {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const deleted = await prisma.fileSession.deleteMany({
+      where: {
+        createdAt: {
+          lt: oneDayAgo,
+        },
+      },
+    });
+    if (deleted.count > 0) {
+      console.log(`Cleaned up ${deleted.count} abandoned sessions (24hr+ old)`);
+    }
+  } catch (error) {
+    console.error("Cleanup error:", error);
+  }
+}, 60 * 60 * 1000); // Run every hour
 
 io.on("connection", (socket) => {
-  console.log(`User Connected: ${socket.id}`);
+  // Rate limit connections per IP
+  const clientIp = socket.handshake.address;
+  const rateLimitResult = socketConnectionLimiter.check(clientIp);
+  
+  if (!rateLimitResult.allowed) {
+    console.log(`Connection rate limit exceeded for ${clientIp}`);
+    socket.emit("error", { message: "Too many connections. Please try again later." });
+    socket.disconnect(true);
+    return;
+  }
 
-  // 1. SENDER: Start a file session
-  socket.on("upload-init", async (data) => {
-    try {
-      const session = await prisma.fileSession.create({
-        data: {
-          fileName: data.fileName,
-          fileSize: data.fileSize,
-          fileType: data.fileType,
-          senderSocketId: socket.id,
-          status: "waiting",
-        },
-      });
+  console.log(`User Connected: ${socket.id} (${rateLimitResult.remaining} connections remaining)`);
 
-      console.log(`New File Session: ${session.id}`);
-      
-      // CRITICAL: Sender joins a "room" named after the file ID
-      socket.join(session.id);
-
-      socket.emit("upload-created", { fileId: session.id });
-    } catch (error) {
-      console.error("Database Error:", error);
-    }
-  });
-
-  // 2. RECEIVER: Join the session
-  socket.on("join-room", async ({ fileId }) => {
-    try {
-      // Find the file in DB
-      const session = await prisma.fileSession.findUnique({
-        where: { id: fileId },
-      });
-
-      if (!session) {
-        socket.emit("error", { message: "File not found or expired" });
-        return;
-      }
-
-      // Add Receiver to the room
-      socket.join(fileId);
-      
-      // Notify the Receiver about the file details
-      socket.emit("file-meta", {
-        fileName: session.fileName,
-        fileSize: session.fileSize,
-        fileType: session.fileType,
-      });
-
-      // Notify the Sender that someone joined!
-      // 'to(fileId)' sends to everyone in room EXCEPT the person sending
-      socket.to(fileId).emit("receiver-joined", { receiverId: socket.id });
-
-      console.log(`Receiver joined room: ${fileId}`);
-
-    } catch (error) {
-      console.error("Join Error:", error);
-    }
-  });
-
-  // When User A sends a signal (Offer/Candidate), forward it to User B
-  socket.on("signal", ({ target, data }) => {
-    io.to(target).emit("signal", { 
-      sender: socket.id, 
-      data 
-    });
-  });
-
-  // Transfer State Synchronization
-  socket.on("transfer-state-change", ({ fileId, state, reason }) => {
-    console.log(`Transfer state changed in room ${fileId}: ${state}`);
-    // Broadcast to everyone in the room EXCEPT the sender
-    socket.to(fileId).emit("transfer-state-update", { state, reason, from: socket.id });
-  });
-
-  // Pause transfer
-  socket.on("pause-transfer", ({ fileId }) => {
-    console.log(`Transfer paused in room ${fileId}`);
-    socket.to(fileId).emit("transfer-paused", { from: socket.id });
-  });
-
-  // Cancel/Stop transfer
-  socket.on("cancel-transfer", ({ fileId, reason }) => {
-    console.log(`Transfer cancelled in room ${fileId}: ${reason}`);
-    socket.to(fileId).emit("transfer-cancelled", { reason, from: socket.id });
-  });
-
-  // Resume transfer
-  socket.on("resume-transfer", ({ fileId }) => {
-    console.log(`Transfer resumed in room ${fileId}`);
-    socket.to(fileId).emit("transfer-resumed", { from: socket.id });
-  });
+  // Register all socket event handlers
+  handleUploadInit(socket);
+  handleJoinRoom(socket, io);
+  handleSignal(socket, io);
+  handleTransferStateChange(socket);
+  handlePauseTransfer(socket);
+  handleCancelTransfer(socket);
+  handleResumeTransfer(socket);
+  handleTransferComplete(socket);
 
   socket.on("disconnect", () => {
     console.log("User Disconnected", socket.id);
