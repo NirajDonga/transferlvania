@@ -1,5 +1,3 @@
-// Custom rate limiter without external dependencies
-
 interface RateLimitEntry {
   count: number;
   resetTime: number;
@@ -14,7 +12,6 @@ class RateLimiter {
     this.windowMs = windowMs;
     this.maxRequests = maxRequests;
 
-    // Cleanup old entries every minute
     setInterval(() => this.cleanup(), 60000);
   }
 
@@ -22,7 +19,6 @@ class RateLimiter {
     const now = Date.now();
     const entry = this.requests.get(identifier);
 
-    // No entry or expired window
     if (!entry || now > entry.resetTime) {
       const newEntry: RateLimitEntry = {
         count: 1,
@@ -36,7 +32,6 @@ class RateLimiter {
       };
     }
 
-    // Within window - check if limit exceeded
     if (entry.count >= this.maxRequests) {
       return {
         allowed: false,
@@ -45,7 +40,6 @@ class RateLimiter {
       };
     }
 
-    // Increment count
     entry.count++;
     this.requests.set(identifier, entry);
 
@@ -78,7 +72,6 @@ class RateLimiter {
   }
 }
 
-// Export rate limiters for different purposes
 export const socketConnectionLimiter = new RateLimiter(60000, 10); // 10 connections per minute per IP
 export const uploadInitLimiter = new RateLimiter(300000, 5); // 5 uploads per 5 minutes per socket
 export const joinRoomLimiter = new RateLimiter(60000, 20); // 20 room joins per minute per socket

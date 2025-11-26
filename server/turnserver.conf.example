@@ -1,0 +1,83 @@
+# Coturn Configuration for Transferlvania
+# Copy this to /etc/turnserver.conf after installing coturn
+
+# Listening port for STUN/TURN
+listening-port=3478
+
+# TLS listening port (TURNS)
+tls-listening-port=5349
+
+# External IP address (replace with your server's public IP)
+# external-ip=YOUR_PUBLIC_IP_HERE
+
+# Relay addresses
+# relay-ip=YOUR_PUBLIC_IP_HERE
+
+# Use authentication secret (time-limited credentials)
+use-auth-secret
+# Generate secret: openssl rand -hex 32
+# static-auth-secret=YOUR_SECRET_HERE
+
+# Alternatively, use long-term credentials
+# user=username:password
+# realm=transferlvania.com
+
+# Security
+fingerprint
+lt-cred-mech
+
+# Allow all IP ranges (restrict in production)
+allowed-peer-ip=0.0.0.0-255.255.255.255
+
+# Deny private networks (optional, for security)
+# denied-peer-ip=10.0.0.0-10.255.255.255
+# denied-peer-ip=172.16.0.0-172.31.255.255
+# denied-peer-ip=192.168.0.0-192.168.255.255
+
+# Logging
+log-file=/var/log/turnserver.log
+verbose
+syslog
+
+# Performance settings
+max-bps=0
+min-port=49152
+max-port=65535
+user-quota=0
+total-quota=0
+
+# Enable bandwidth limit per user (bytes per second, 0 = unlimited)
+# bps-capacity=0
+
+# TLS certificates (required for TURNS)
+# Get free certs from Let's Encrypt: certbot certonly --standalone -d turn.your-domain.com
+# cert=/etc/letsencrypt/live/turn.your-domain.com/fullchain.pem
+# pkey=/etc/letsencrypt/live/turn.your-domain.com/privkey.pem
+
+# Additional security
+no-multicast-peers
+no-cli
+no-tlsv1
+no-tlsv1_1
+no-loopback-peers
+no-stun-backward-compatibility
+
+# Mobility support (ICE-TCP)
+mobility
+
+# Prometheus metrics (optional)
+# prometheus
+# prometheus-port=9641
+
+# Database for persistent allocation (optional)
+# userdb=/var/lib/turn/turndb
+# psql-userdb="host=localhost dbname=turn user=turn password=turn connect_timeout=30"
+
+# Server name
+server-name=transferlvania-turn
+
+# Realm
+realm=transferlvania.com
+
+# Deny TCP relay (use UDP only, better for P2P)
+# no-tcp-relay

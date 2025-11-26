@@ -1,23 +1,17 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model FileSession {
-  id             String   @id @default(uuid()) // The unique link ID
-  fileName       String
-  fileSize       String   // Stored as string to avoid BigInt issues
-  fileType       String
-  
-  senderSocketId String?  // The socket ID of the person sending
-  passwordHash   String?  // Optional SHA-256 hash (not plaintext!)
-  
-  status         String   @default("waiting") // waiting, active, completed
-  createdAt      DateTime @default(now())
+  id           String   @id @default(uuid())
+  fileName     String
+  fileSize     String
+  fileType     String
+  passwordHash String?
+  status       String   @default("waiting")
+  createdAt    DateTime @default(now())
 }

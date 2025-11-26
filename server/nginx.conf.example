@@ -1,0 +1,93 @@
+# DDoS Protection Configuration for Nginx
+
+# Add this to your nginx.conf or site config file
+
+# Limit connection rate per IP
+limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;
+limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=10r/s;
+
+# Limit by server
+limit_conn_zone $server_name zone=conn_limit_per_server:10m;
+
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # Connection limits
+    limit_conn conn_limit_per_ip 10;
+    limit_conn conn_limit_per_server 100;
+    limit_req zone=req_limit_per_ip burst=20 nodelay;
+
+    # Timeout settings to prevent slowloris
+    client_body_timeout 10s;
+    client_header_timeout 10s;
+    keepalive_timeout 5s 5s;
+    send_timeout 10s;
+
+    # Request size limits
+    client_max_body_size 100G;
+    client_body_buffer_size 128k;
+
+    # Proxy settings for Node.js server
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # API/Socket.IO endpoints
+    location /socket.io/ {
+        proxy_pass http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket specific
+        proxy_buffering off;
+        proxy_redirect off;
+    }
+
+    # Block common attack patterns
+    location ~* \.(asp|aspx|cgi|sh|pl|py)$ {
+        deny all;
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+}
+
+# Optional: Add fail2ban integration
+# Create /etc/fail2ban/filter.d/nginx-ddos.conf:
+#
+# [Definition]
+# failregex = ^<HOST> -.*GET.*
+# ignoreregex =
+#
+# Then add to /etc/fail2ban/jail.local:
+#
+# [nginx-ddos]
+# enabled = true
+# port = http,https
+# filter = nginx-ddos
+# logpath = /var/log/nginx/access.log
+# maxretry = 100
+# findtime = 60
+# bantime = 600

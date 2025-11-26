@@ -1,11 +1,8 @@
-// Validation utilities for input sanitization and validation
-
 export function validateFileName(fileName: unknown): { valid: boolean; sanitized?: string; error?: string } {
   if (!fileName || typeof fileName !== 'string' || fileName.length === 0) {
     return { valid: false, error: "Invalid file name" };
   }
 
-  // Sanitize fileName - remove path traversal and dangerous characters
   const sanitized = fileName
     .replace(/\.\./g, '') // Remove ..
     .replace(/[\/\\]/g, '_') // Replace slashes
@@ -36,13 +33,78 @@ export function validateFileSize(fileSize: unknown, maxSize: number = 100 * 1024
   return { valid: true, size: fileSizeNum };
 }
 
-export function validateFileType(fileType: unknown): { valid: boolean; sanitized?: string; error?: string } {
+const DANGEROUS_EXTENSIONS = [
+  'exe', 'dll', 'bat', 'cmd', 'com', 'scr', 'pif', 'vbs', 'js', 'jse',
+  'wsf', 'wsh', 'msi', 'msp', 'hta', 'cpl', 'jar', 'ps1', 'psm1',
+  'reg', 'vb', 'vbe', 'ws', 'application', 'gadget', 'msc', 'lnk'
+];
+
+const SUSPICIOUS_MIME_TYPES = [
+  'application/x-msdownload',
+  'application/x-msdos-program',
+  'application/x-executable',
+  'application/x-bat',
+  'application/x-sh',
+  'text/x-script.python',
+];
+
+export function validateFileType(fileType: unknown): { 
+  valid: boolean; 
+  sanitized?: string; 
+  error?: string;
+  isDangerous?: boolean;
+  warningMessage?: string;
+} {
   if (!fileType || typeof fileType !== 'string') {
     return { valid: false, error: "Invalid file type" };
   }
 
-  const sanitized = fileType.substring(0, 100);
+  const sanitized = fileType.substring(0, 100).toLowerCase();
+  
+  const isDangerousMime = SUSPICIOUS_MIME_TYPES.some(mime => sanitized.includes(mime));
+  if (isDangerousMime) {
+    return {
+      valid: true,
+      sanitized,
+      isDangerous: true,
+      warningMessage: "This file type may contain executable code. Exercise extreme caution."
+    };
+  }
+
   return { valid: true, sanitized };
+}
+
+export function checkDangerousFileExtension(fileName: string): {
+  isDangerous: boolean;
+  warningMessage?: string;
+  extension?: string;
+} {
+  const parts = fileName.toLowerCase().split('.');
+  if (parts.length < 2) {
+    return { isDangerous: false };
+  }
+
+  const extension = parts[parts.length - 1]!;
+  
+  if (DANGEROUS_EXTENSIONS.includes(extension)) {
+    return {
+      isDangerous: true,
+      extension: extension,
+      warningMessage: `WARNING: .${extension} files can execute code on your computer. Only download if you trust the sender.`
+    };
+  }
+
+  const secondLastExtension = parts[parts.length - 2];
+  const hasDoubleExtension = parts.length > 2 && secondLastExtension && DANGEROUS_EXTENSIONS.includes(secondLastExtension);
+  if (hasDoubleExtension && secondLastExtension) {
+    return {
+      isDangerous: true,
+      extension: secondLastExtension,
+      warningMessage: "WARNING: This file has a disguised executable extension. This is a common malware technique."
+    };
+  }
+
+  return { isDangerous: false };
 }
 
 export function validateUUID(id: unknown): { valid: boolean; error?: string } {
