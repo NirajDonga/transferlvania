@@ -478,29 +478,3 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ---
 
-## 📞 Support
-
-- **Documentation**: Check [SECURITY_RESOLVED.md](SECURITY_RESOLVED.md) and [server/README.md](server/README.md)
-- **Issues**: [GitHub Issues](https://github.com/NirajDonga/transferlvania/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/NirajDonga/transferlvania/discussions)
-
----
-
-## 🗺️ Roadmap
-
-- [ ] File integrity verification (automatic hash checks)
-- [ ] Multi-file/folder transfers (zip streaming)
-- [ ] Transfer history and analytics dashboard
-- [ ] Mobile app (React Native)
-- [ ] End-to-end file encryption (client-side)
-- [ ] Transfer resume after disconnect
-- [ ] QR code sharing for mobile
-- [ ] Redis-based session storage (horizontal scaling)
-- [ ] Docker compose for easy deployment
-- [ ] Kubernetes manifests
-
----
-
-**Built with ❤️ by [Niraj Donga](https://github.com/NirajDonga)**
-
-⭐ Star this repo if you find it useful!
