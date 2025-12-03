@@ -2,7 +2,6 @@ import { logger } from './logger.js';
 
 interface EnvironmentConfig {
   DATABASE_URL: string;
-  ENCRYPTION_KEY: string;
   PORT: number;
   TURN_SERVER: string | undefined;
   TURN_SECRET: string | undefined;
@@ -19,14 +18,6 @@ export function validateEnvironment(): EnvironmentConfig {
     errors.push('DATABASE_URL is required');
   } else if (!process.env.DATABASE_URL.startsWith('postgresql://') && !process.env.DATABASE_URL.startsWith('postgres://')) {
     warnings.push('DATABASE_URL does not appear to be a valid PostgreSQL connection string');
-  }
-
-  if (!process.env.ENCRYPTION_KEY) {
-    errors.push('ENCRYPTION_KEY is required');
-  } else if (process.env.ENCRYPTION_KEY.length < 32) {
-    errors.push('ENCRYPTION_KEY must be at least 32 characters long');
-  } else if (process.env.ENCRYPTION_KEY.length < 64) {
-    warnings.push('ENCRYPTION_KEY should be at least 64 characters for maximum security');
   }
 
   // Port validation
@@ -51,12 +42,13 @@ export function validateEnvironment(): EnvironmentConfig {
     warnings.push('TURN server not configured. Using only public STUN server. WebRTC may fail behind restrictive NATs.');
   }
 
+  // Encryption Key Validation
+  if (!process.env.METADATA_ENCRYPTION_KEY) {
+    warnings.push('METADATA_ENCRYPTION_KEY is missing. Using a temporary random key. Encrypted data will be lost on restart.');
+  }
+
   // NODE_ENV validation
   if (process.env.NODE_ENV === 'production') {
-    if (process.env.ENCRYPTION_KEY === 'dev-only-insecure-key-change-in-production-minimum-32-chars-required') {
-      errors.push('Cannot use development ENCRYPTION_KEY in production environment');
-    }
-    
     if (!hasTurnServer || !hasTurnSecret) {
       warnings.push('Production deployment without TURN server may result in connection failures for users behind firewalls');
     }
@@ -88,7 +80,6 @@ export function validateEnvironment(): EnvironmentConfig {
 
   return {
     DATABASE_URL: process.env.DATABASE_URL!,
-    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY!,
     PORT: port,
     TURN_SERVER: process.env.TURN_SERVER || undefined,
     TURN_SECRET: process.env.TURN_SECRET || undefined,

@@ -20,6 +20,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
   const [progress, setProgress] = useState(0);
   const [isP2PReady, setIsP2PReady] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSelectingLocation, setIsSelectingLocation] = useState(false);
   const [passwordRequired, setPasswordRequired] = useState(false);
   const [password, setPassword] = useState("");
   
@@ -30,6 +31,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
   const receivedBytes = useRef(0);
   const isCancelledRef = useRef(false);
   const lastProgress = useRef(0);
+  const fileStreamRef = useRef<any>(null);
 
   useEffect(() => {
     getIceServers().then(servers => {
@@ -37,7 +39,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       console.log('ICE servers configured:', servers.length, 'servers');
     });
 
-    // 1. Load StreamSaver
+    // Load StreamSaver for true disk streaming
     const initStreamSaver = async () => {
       try {
         const streamSaver = (await import("streamsaver")).default;
@@ -119,10 +121,10 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
             // Guard clauses
             if (isCancelledRef.current || !writerRef.current) return;
 
-            const chunk = e.data; // This is now correctly an ArrayBuffer
+            const chunk = e.data; // ArrayBuffer
 
             try {
-              // Convert ArrayBuffer to Uint8Array and write
+              // Write directly to disk stream (no RAM accumulation)
               await writerRef.current.write(new Uint8Array(chunk));
               
               receivedBytes.current += chunk.byteLength;
@@ -143,18 +145,20 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
                     setStatus("Download Complete!");
                     setIsDownloading(false);
                     
-                    // Notify server that transfer is complete
-                    socket.emit("transfer-complete", { fileId });
-                    
-                    // Close the writer nicely
+                    // Close the writer
                     if (writerRef.current) {
-                        writerRef.current.close().catch(err => console.error(err));
+                        await writerRef.current.close();
                         writerRef.current = null;
                     }
+                    
+                    // Notify server that transfer is complete
+                    socket.emit("transfer-complete", { fileId });
                  }
               }
             } catch (err) {
               console.error("Write error:", err);
+              setStatus("Download error");
+              setIsDownloading(false);
             }
           };
         };
@@ -174,7 +178,9 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       socket.off("file-meta");
       socket.off("signal");
       socket.off("error");
-      if (writerRef.current) writerRef.current.abort().catch(() => {});
+      if (writerRef.current) {
+        writerRef.current.abort().catch(() => {});
+      }
     };
   }, [fileId]);
 
@@ -190,40 +196,56 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
         return;
     }
 
+    setIsSelectingLocation(true);
     isCancelledRef.current = false;
     receivedBytes.current = 0;
     setProgress(0);
-    setStatus("Initializing Download...");
+    setStatus("Please select where to save the file...");
     
     try {
-      // Create the Write Stream
+      // Create stream - this triggers the save dialog
       const fileStream = streamSaverRef.current.createWriteStream(fileMetaRef.current.fileName, {
           size: parseInt(fileMetaRef.current.fileSize)
       });
-
-      writerRef.current = fileStream.getWriter();
+      fileStreamRef.current = fileStream;
+      const writer = fileStream.getWriter();
+      writerRef.current = writer;
       
-      // Tell Sender to GO
+      // Wait for the stream to actually be ready (user selected location)
+      await new Promise((resolve) => {
+        const checkReady = () => {
+          if (writer.ready) {
+            resolve(true);
+          } else {
+            writer.ready.then(resolve);
+          }
+        };
+        checkReady();
+      });
+      
+      // Only NOW tell sender to start - after user selected location
+      setStatus("Downloading...");
       dataChannelRef.current.send("START_TRANSFER");
       
-      setStatus("Downloading...");
+      setIsSelectingLocation(false);
       setIsP2PReady(false);
       setIsDownloading(true);
     } catch (err) {
-      console.error("User cancelled or error:", err);
-      setStatus("Download cancelled.");
-      setIsP2PReady(true);
+      console.error("Download start error or cancelled:", err);
+      setStatus("Download cancelled");
+      setIsSelectingLocation(false);
+      setIsP2PReady(true); 
     }
-  };
-
-  const handleCancel = () => {
+  };  const handleCancel = () => {
     isCancelledRef.current = true;
     
-    // Notify sender (Optional, good practice)
-    if (dataChannelRef.current?.readyState === 'open') {
-        // dataChannelRef.current.send("STOP_TRANSFER"); 
-    }
+    // Notify sender
+    socket.emit("cancel-transfer", { 
+      fileId, 
+      reason: "Receiver cancelled the transfer" 
+    });
     
+    // Abort the writer
     if (writerRef.current) {
         writerRef.current.abort().catch(() => {});
         writerRef.current = null;
@@ -287,12 +309,20 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
         )}
 
         {isP2PReady && !isDownloading && !passwordRequired && (
-          <button 
-            onClick={handleAcceptDownload}
-            className="bg-linear-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 text-white font-bold py-4 px-10 rounded-full mb-6 transition-all transform hover:scale-110 shadow-2xl text-lg animate-pulse"
-          >
-            ⬇️ Accept & Download
-          </button>
+          <div className="flex flex-col items-center gap-2 mb-6">
+            <button 
+              onClick={handleAcceptDownload}
+              disabled={isSelectingLocation}
+              className={`bg-linear-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 text-white font-bold py-4 px-10 rounded-full transition-all transform hover:scale-105 shadow-2xl text-lg ${isSelectingLocation ? 'opacity-75 cursor-wait' : 'animate-pulse'}`}
+            >
+              {isSelectingLocation ? '📂 Selecting Location...' : '⬇️ Download File'}
+            </button>
+            {!isSelectingLocation && (
+                <p className="text-xs text-purple-300/70">
+                    You will be asked to choose a save location
+                </p>
+            )}
+          </div>
         )}
 
         {isDownloading && (

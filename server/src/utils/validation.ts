@@ -17,20 +17,19 @@ export function validateFileName(fileName: unknown): { valid: boolean; sanitized
 }
 
 export function validateFileSize(fileSize: unknown, maxSize: number = 100 * 1024 * 1024 * 1024): { valid: boolean; size?: number; error?: string } {
-  if (!fileSize || typeof fileSize !== 'string') {
+  if (typeof fileSize !== 'number') {
     return { valid: false, error: "Invalid file size" };
   }
 
-  const fileSizeNum = parseInt(fileSize);
-  if (isNaN(fileSizeNum) || fileSizeNum <= 0) {
+  if (fileSize <= 0) {
     return { valid: false, error: "File size must be a positive number" };
   }
 
-  if (fileSizeNum > maxSize) {
+  if (fileSize > maxSize) {
     return { valid: false, error: `File size exceeds maximum limit (${(maxSize / (1024 * 1024 * 1024)).toFixed(0)}GB)` };
   }
 
-  return { valid: true, size: fileSizeNum };
+  return { valid: true, size: fileSize };
 }
 
 const DANGEROUS_EXTENSIONS = [

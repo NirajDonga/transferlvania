@@ -5,8 +5,8 @@ import { uploadInitLimiter, joinRoomLimiter } from "../middleware/rateLimiter.js
 import { hashPassword, verifyPassword, validatePassword } from "../utils/password.js";
 import { sessionManager } from "../utils/sessionManager.js";
 import { logger } from "../utils/logger.js";
-import { encryptField, decryptField } from "../utils/encryption.js";
 import { sessionLimiter } from "../middleware/sessionLimiter.js";
+import { encrypt, decrypt } from "../utils/encryption.js";
 
 export function handleUploadInit(socket: Socket) {
   socket.on("upload-init", async (data) => {
@@ -108,9 +108,9 @@ export function handleUploadInit(socket: Socket) {
 
       const session = await prisma.fileSession.create({
         data: {
-          encryptedFileName: encryptField(fileNameValidation.sanitized!),
-          fileSize: data.fileSize,
-          encryptedFileType: encryptField(fileTypeValidation.sanitized!),
+          fileName: encrypt(fileNameValidation.sanitized!),
+          fileSize: BigInt(data.fileSize),
+          fileType: encrypt(fileTypeValidation.sanitized!),
           passwordHash: passwordHash,
           status: "waiting",
         },
@@ -121,8 +121,7 @@ export function handleUploadInit(socket: Socket) {
         socketId: socket.id,
         ip: socket.handshake.address,
         details: { 
-          fileNameHash: require('crypto').createHash('sha256').update(fileNameValidation.sanitized!).digest('hex').substring(0, 8),
-          fileSize: session.fileSize, 
+          fileSize: session.fileSize.toString(), 
           hasPassword: !!passwordHash,
           isDangerous: dangerousCheck.isDangerous || fileTypeValidation.isDangerous
         }
@@ -167,32 +166,15 @@ export function handleJoinRoom(socket: Socket, io: any) {
         return;
       }
 
-      const sessionRaw = await prisma.fileSession.findUnique({
+      const session = await prisma.fileSession.findUnique({
         where: { id: fileId },
       });
 
-      if (!sessionRaw) {
+      if (!session) {
         logger.log('warn', 'Attempted to join non-existent session', { fileId, socketId: socket.id, ip: socket.handshake.address });
         socket.emit("error", { message: "File not found or expired" });
         return;
       }
-
-      let fileName: string;
-      let fileType: string;
-      try {
-        fileName = decryptField(sessionRaw.encryptedFileName);
-        fileType = decryptField(sessionRaw.encryptedFileType);
-      } catch (error) {
-        logger.log('error', 'Failed to decrypt file metadata', { fileId, details: error });
-        socket.emit("error", { message: "Failed to retrieve file information" });
-        return;
-      }
-
-      const session = {
-        ...sessionRaw,
-        fileName,
-        fileType,
-      };
 
       if (session.passwordHash) {
         if (!password || typeof password !== 'string') {
@@ -221,8 +203,12 @@ export function handleJoinRoom(socket: Socket, io: any) {
 
       socket.join(fileId);
 
-      const dangerousCheck = checkDangerousFileExtension(session.fileName);
-      const fileTypeValidation = validateFileType(session.fileType);
+      // Decrypt metadata for processing
+      const decryptedFileName = decrypt(session.fileName);
+      const decryptedFileType = decrypt(session.fileType);
+
+      const dangerousCheck = checkDangerousFileExtension(decryptedFileName);
+      const fileTypeValidation = validateFileType(decryptedFileType);
       
       const warnings = [];
       if (dangerousCheck.isDangerous) {
@@ -232,7 +218,6 @@ export function handleJoinRoom(socket: Socket, io: any) {
           socketId: socket.id,
           ip: socket.handshake.address,
           details: { 
-            fileNameHash: require('crypto').createHash('sha256').update(session.fileName).digest('hex').substring(0, 8),
             extension: dangerousCheck.extension 
           }
         });
@@ -242,9 +227,9 @@ export function handleJoinRoom(socket: Socket, io: any) {
       }
       
       socket.emit("file-meta", {
-        fileName: session.fileName,
-        fileSize: session.fileSize,
-        fileType: session.fileType,
+        fileName: decryptedFileName,
+        fileSize: session.fileSize.toString(),
+        fileType: decryptedFileType,
         isDangerous: dangerousCheck.isDangerous || fileTypeValidation.isDangerous,
         warnings: warnings.length > 0 ? warnings : undefined
       });

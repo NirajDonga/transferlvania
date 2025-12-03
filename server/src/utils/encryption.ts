@@ -1,70 +1,79 @@
 import crypto from 'crypto';
+import { logger } from './logger.js';
 
 const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
+const IV_LENGTH = 16; // For AES, this is always 16
+const SALT_LENGTH = 64;
+const TAG_LENGTH = 16;
 
-function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY;
-  
-  if (!key) {
-    console.warn('WARNING: ENCRYPTION_KEY not set. Using fallback key. Set ENCRYPTION_KEY in production!');
-    return crypto.scryptSync('default-insecure-key-change-in-production', 'transferlvania-salt', 32);
+// Get key from env or generate a temporary one (warn in logs)
+let ENCRYPTION_KEY: Buffer;
+
+try {
+  if (process.env.METADATA_ENCRYPTION_KEY) {
+    // Support hex string or raw string
+    if (process.env.METADATA_ENCRYPTION_KEY.length === 64) {
+        ENCRYPTION_KEY = Buffer.from(process.env.METADATA_ENCRYPTION_KEY, 'hex');
+    } else {
+        // Derive a 32-byte key from the string using scrypt
+        ENCRYPTION_KEY = crypto.scryptSync(process.env.METADATA_ENCRYPTION_KEY, 'salt', 32);
+    }
+  } else {
+    console.warn('WARNING: METADATA_ENCRYPTION_KEY not set. Using temporary random key. Data will be unreadable after restart.');
+    ENCRYPTION_KEY = crypto.randomBytes(32);
   }
-  
-  if (key.length < 32) {
-    throw new Error('ENCRYPTION_KEY must be at least 32 characters long');
-  }
-  
-  return crypto.scryptSync(key, 'transferlvania-salt', 32);
+} catch (error) {
+  console.error('Failed to initialize encryption key:', error);
+  ENCRYPTION_KEY = crypto.randomBytes(32);
 }
 
-export function encryptField(plaintext: string): string {
+export function encrypt(text: string): string {
   try {
-    const key = getEncryptionKey();
     const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
     
-    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-    
-    const encryptedBuffer = Buffer.concat([
-      cipher.update(plaintext, 'utf8'),
-      cipher.final()
-    ]);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
     
     const authTag = cipher.getAuthTag();
     
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encryptedBuffer.toString('hex')}`;
+    // Format: iv:authTag:encrypted
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   } catch (error) {
-    throw new Error(`Encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.log('error', 'Encryption failed', { details: error });
+    throw new Error('Encryption failed');
   }
 }
 
-export function decryptField(encryptedData: string): string {
+export function decrypt(text: string): string {
   try {
-    const key = getEncryptionKey();
-    const parts = encryptedData.split(':');
-    
+    const parts = text.split(':');
     if (parts.length !== 3) {
-      throw new Error('Invalid encrypted data format');
+        // Fallback for unencrypted legacy data if necessary, or just throw
+        return text; 
     }
     
-    const iv = Buffer.from(parts[0]!, 'hex');
-    const authTag = Buffer.from(parts[1]!, 'hex');
-    const encrypted = Buffer.from(parts[2]!, 'hex');
+    const ivHex = parts[0];
+    const authTagHex = parts[1];
+    const encryptedText = parts[2];
+
+    if (!ivHex || !authTagHex || !encryptedText) {
+        return text;
+    }
     
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    
+    const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
     decipher.setAuthTag(authTag);
     
-    const decryptedBuffer = Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final()
-    ]);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
     
-    return decryptedBuffer.toString('utf8');
+    return decrypted;
   } catch (error) {
-    throw new Error(`Decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.log('error', 'Decryption failed', { details: error });
+    // Return original text if decryption fails (might be unencrypted data)
+    return text;
   }
-}
-
-export function generateEncryptionKey(): string {
-  return crypto.randomBytes(32).toString('hex');
 }

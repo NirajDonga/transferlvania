@@ -4,12 +4,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model FileSession {
   id           String   @id @default(uuid())
   fileName     String
-  fileSize     String
+  fileSize     BigInt
   fileType     String
   passwordHash String?
   status       String   @default("waiting")

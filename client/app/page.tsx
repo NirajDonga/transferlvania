@@ -74,11 +74,18 @@ export default function Home() {
       setStatus("Transfer resumed");
     };
 
+    const handleError = ({ message }: { message: string }) => {
+      console.error("Socket error:", message);
+      setStatus(`Error: ${message}`);
+      setIsTransferActive(false);
+    };
+
     socket.on("receiver-joined", handleReceiverJoined);
     socket.on("signal", handleSignal);
     socket.on("transfer-cancelled", handleTransferCancelled);
     socket.on("transfer-paused", handleTransferPaused);
     socket.on("transfer-resumed", handleTransferResumed);
+    socket.on("error", handleError);
 
     return () => {
       socket.off("receiver-joined", handleReceiverJoined);
@@ -86,6 +93,7 @@ export default function Home() {
       socket.off("transfer-cancelled", handleTransferCancelled);
       socket.off("transfer-paused", handleTransferPaused);
       socket.off("transfer-resumed", handleTransferResumed);
+      socket.off("error", handleError);
       if (peerRef.current) peerRef.current.close();
       isNegotiating.current = false;
     };
@@ -114,13 +122,6 @@ export default function Home() {
     setShowPasswordInput(false);
     setStatus("Registering file...");
     
-    socket.emit("upload-init", {
-      fileName: selectedFile.name,
-      fileSize: selectedFile.size.toString(),
-      fileType: selectedFile.type,
-      password: password || undefined, // Optional password
-    });
-    
     socket.once("upload-created", ({ fileId, warnings }: { fileId: string; warnings?: string[] }) => {
       setFileId(fileId);
       currentFileIdRef.current = fileId;
@@ -129,6 +130,13 @@ export default function Home() {
       if (warnings && warnings.length > 0) {
         alert(`⚠️ FILE SAFETY NOTICE ⚠️\n\n${warnings.join('\n\n')}\n\nThe receiver will be warned about this file type.`);
       }
+    });
+
+    socket.emit("upload-init", {
+      fileName: selectedFile.name,
+      fileSize: selectedFile.size,
+      fileType: selectedFile.type,
+      password: password || undefined, // Optional password
     });
   };
 
