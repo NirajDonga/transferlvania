@@ -19,6 +19,8 @@ jobs:
       
       - name: Build Backend
         working-directory: ./server
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           npm ci
           npx prisma generate
