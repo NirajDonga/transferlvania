@@ -1,0 +1,83 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Build Backend
+        working-directory: ./server
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+      
+      - name: Build Frontend
+        working-directory: ./client
+        env:
+          NEXT_PUBLIC_SERVER_URL: ${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+        run: |
+          npm ci
+          npm run build
+      
+      - name: Package
+        run: |
+          tar -czf deploy.tar.gz \
+            server/dist \
+            server/package*.json \
+            server/prisma \
+            server/Dockerfile \
+            server/.dockerignore \
+            client/.next \
+            client/public \
+            client/package*.json \
+            client/next.config.ts \
+            client/Dockerfile \
+            client/.dockerignore \
+            docker-compose.yml
+      
+      - name: Upload to VM
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: "deploy.tar.gz"
+          target: "/tmp/"
+      
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd ~/transferlvania
+            tar -xzf /tmp/deploy.tar.gz
+            rm /tmp/deploy.tar.gz
+            
+            cat > .env << EOF
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+            CLIENT_URL=${{ secrets.CLIENT_URL }}
+            NODE_ENV=production
+            EOF
+            
+            docker-compose down
+            docker-compose up -d --build
+            
+            echo "Deployment complete!"
+            docker ps
+            docker-compose logs --tail=30
