@@ -57,7 +57,6 @@ jobs:
             client/.next \
             client/package*.json \
             client/next.config.ts \
-            client/public \
             client/Dockerfile \
             docker-compose.yml
           echo "✅ Package created: $(du -h deploy.tar.gz)"
