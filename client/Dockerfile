@@ -7,7 +7,6 @@ COPY package*.json ./
 RUN npm ci --production
 
 COPY .next ./.next
-COPY public ./public
 COPY next.config.ts ./
 
 EXPOSE 3000
