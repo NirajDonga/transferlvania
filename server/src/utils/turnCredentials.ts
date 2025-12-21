@@ -5,6 +5,12 @@ interface TurnCredentials {
   credential: string;
 }
 
+interface IceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
 export function generateTurnCredentials(secret: string, ttlHours: number = 24): TurnCredentials {
   const timestamp = Math.floor(Date.now() / 1000) + (ttlHours * 3600);
   const username = `${timestamp}:transferlvania-user`;
@@ -20,7 +26,7 @@ export function getIceServers() {
   const turnSecret = process.env.TURN_SECRET;
   const turnServer = process.env.TURN_SERVER;
   
-  const iceServers: RTCIceServer[] = [
+  const iceServers: IceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' }
   ];
   

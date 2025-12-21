@@ -3,6 +3,7 @@ import { logger } from './logger.js';
 interface EnvironmentConfig {
   DATABASE_URL: string;
   PORT: number;
+  CLIENT_URL: string;
   TURN_SERVER: string | undefined;
   TURN_SECRET: string | undefined;
   TURNS_ENABLED: boolean;
@@ -13,20 +14,22 @@ export function validateEnvironment(): EnvironmentConfig {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Required variables
   if (!process.env.DATABASE_URL) {
     errors.push('DATABASE_URL is required');
   } else if (!process.env.DATABASE_URL.startsWith('postgresql://') && !process.env.DATABASE_URL.startsWith('postgres://')) {
     warnings.push('DATABASE_URL does not appear to be a valid PostgreSQL connection string');
   }
 
-  // Port validation
   const port = parseInt(process.env.PORT || '4000', 10);
   if (isNaN(port) || port < 1 || port > 65535) {
     errors.push('PORT must be a valid number between 1 and 65535');
   }
 
-  // TURN server validation (optional but warn if incomplete)
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  if (!clientUrl.startsWith('http://') && !clientUrl.startsWith('https://')) {
+    warnings.push('CLIENT_URL should start with http:// or https://');
+  }
+
   const hasTurnServer = !!process.env.TURN_SERVER;
   const hasTurnSecret = !!process.env.TURN_SECRET;
   
@@ -42,19 +45,16 @@ export function validateEnvironment(): EnvironmentConfig {
     warnings.push('TURN server not configured. Using only public STUN server. WebRTC may fail behind restrictive NATs.');
   }
 
-  // Encryption Key Validation
   if (!process.env.METADATA_ENCRYPTION_KEY) {
     warnings.push('METADATA_ENCRYPTION_KEY is missing. Using a temporary random key. Encrypted data will be lost on restart.');
   }
 
-  // NODE_ENV validation
   if (process.env.NODE_ENV === 'production') {
     if (!hasTurnServer || !hasTurnSecret) {
       warnings.push('Production deployment without TURN server may result in connection failures for users behind firewalls');
     }
   }
 
-  // Log results
   if (errors.length > 0) {
     logger.log('error', 'Environment validation failed', { details: errors });
     console.error('\n❌ Environment Configuration Errors:');
@@ -70,7 +70,6 @@ export function validateEnvironment(): EnvironmentConfig {
     console.warn('');
   }
 
-  // Success message
   console.log('✅ Environment variables validated successfully');
   if (process.env.NODE_ENV === 'production') {
     console.log('🚀 Running in PRODUCTION mode');
@@ -81,6 +80,7 @@ export function validateEnvironment(): EnvironmentConfig {
   return {
     DATABASE_URL: process.env.DATABASE_URL!,
     PORT: port,
+    CLIENT_URL: clientUrl,
     TURN_SERVER: process.env.TURN_SERVER || undefined,
     TURN_SECRET: process.env.TURN_SECRET || undefined,
     TURNS_ENABLED: process.env.TURNS_ENABLED === 'true',

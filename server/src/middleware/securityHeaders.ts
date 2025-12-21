@@ -5,8 +5,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self'",
+      "style-src 'self'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self' ws: wss:",
@@ -14,8 +14,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
       "object-src 'none'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      "form-action 'self'",
-      "upgrade-insecure-requests"
+      "form-action 'self'"
     ].join('; ')
   );
 

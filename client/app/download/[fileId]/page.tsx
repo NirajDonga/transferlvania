@@ -1,4 +1,3 @@
-// client/src/app/download/[fileId]/page.tsx
 "use client";
 
 import { useEffect, useState, useRef, use } from "react";
@@ -24,7 +23,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
   const [passwordRequired, setPasswordRequired] = useState(false);
   const [password, setPassword] = useState("");
   
-  // Refs for logic
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const writerRef = useRef<WritableStreamDefaultWriter | null>(null);
   const streamSaverRef = useRef<any>(null);
@@ -39,7 +37,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       console.log('ICE servers configured:', servers.length, 'servers');
     });
 
-    // Load StreamSaver for true disk streaming
     const initStreamSaver = async () => {
       try {
         const streamSaver = (await import("streamsaver")).default;

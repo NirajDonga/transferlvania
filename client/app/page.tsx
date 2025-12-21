@@ -1,4 +1,3 @@
-// client/src/app/page.tsx
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -147,13 +146,11 @@ export default function Home() {
     setIsTransferActive(false);
     setStatus("Transfer stopped by you");
     
-    // Notify the receiver
     socket.emit("cancel-transfer", { 
       fileId: currentFileIdRef.current, 
       reason: "Sender stopped the transfer" 
     });
     
-    // Close the data channel
     if (dataChannelRef.current) {
       dataChannelRef.current.close();
     }
@@ -209,7 +206,6 @@ export default function Home() {
     }
   }
 
-  // --- THE FIX: BACKPRESSURE ---
   const sendFile = async () => {
     if (!selectedFile || !dataChannelRef.current) return;
     
@@ -221,13 +217,11 @@ export default function Home() {
     reader.onload = () => {
       if (!reader.result) return;
       
-      // Check if transfer was cancelled
       if (isCancelled) {
         setStatus("Transfer stopped");
         return;
       }
       
-      // Check if channel is still open
       if (channel.readyState !== 'open') {
         console.error("Channel closed during transfer");
         setStatus("Connection lost");
@@ -236,29 +230,24 @@ export default function Home() {
       }
       
       try {
-        // 1. Send the chunk
         const chunkSize = (reader.result as ArrayBuffer).byteLength;
         channel.send(reader.result as ArrayBuffer);
         offset += chunkSize;
         
-        // 2. Update UI
         const percent = Math.round((offset / selectedFile.size) * 100);
         setProgress(percent);
         
         console.log(`Sent: ${offset} / ${selectedFile.size} bytes (${percent}%)`);
 
         if (offset < selectedFile.size) {
-            // 3. CHECK BUFFER (Backpressure)
             if (channel.bufferedAmount > channel.bufferedAmountLowThreshold) {
-                // Buffer is full! Wait for it to drain.
                 channel.onbufferedamountlow = () => {
-                    channel.onbufferedamountlow = null; // Clear listener
+                    channel.onbufferedamountlow = null;
                     if (!isCancelled && channel.readyState === 'open') {
                       readSlice(offset);
                     }
                 };
             } else {
-                // Buffer is empty, keep going fast
                 readSlice(offset);
             }
         } else {
@@ -284,7 +273,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-8 relative overflow-hidden">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-8 relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute w-96 h-96 bg-purple-500 rounded-full blur-3xl opacity-20 -top-48 -left-48 animate-pulse"></div>
@@ -309,7 +298,7 @@ export default function Home() {
       <div className="relative z-10 bg-white/10 backdrop-blur-xl p-8 rounded-2xl border border-white/20 shadow-2xl text-center w-full max-w-md animate-slide-up hover:shadow-purple-500/20 hover:shadow-3xl transition-all duration-300">
         <label className="mb-6 block cursor-pointer group">
           <div className="border-2 border-dashed border-purple-400/50 rounded-xl p-8 hover:border-purple-400 transition-all hover:bg-white/5 hover:scale-105 duration-300 relative overflow-hidden">
-            <div className="absolute inset-0 bg-linear-to-r from-purple-500/0 via-purple-500/10 to-purple-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+            <div className="absolute inset-0 bg-linear-to-r from-purple-500/0 via-purple-500/10 to-purple-500/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
             <div className="text-center relative z-10">
               <svg className="mx-auto h-12 w-12 text-purple-400 mb-3 group-hover:scale-110 group-hover:rotate-12 transition-all duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />

@@ -6,16 +6,13 @@ const IV_LENGTH = 16; // For AES, this is always 16
 const SALT_LENGTH = 64;
 const TAG_LENGTH = 16;
 
-// Get key from env or generate a temporary one (warn in logs)
 let ENCRYPTION_KEY: Buffer;
 
 try {
   if (process.env.METADATA_ENCRYPTION_KEY) {
-    // Support hex string or raw string
     if (process.env.METADATA_ENCRYPTION_KEY.length === 64) {
         ENCRYPTION_KEY = Buffer.from(process.env.METADATA_ENCRYPTION_KEY, 'hex');
     } else {
-        // Derive a 32-byte key from the string using scrypt
         ENCRYPTION_KEY = crypto.scryptSync(process.env.METADATA_ENCRYPTION_KEY, 'salt', 32);
     }
   } else {
@@ -37,7 +34,6 @@ export function encrypt(text: string): string {
     
     const authTag = cipher.getAuthTag();
     
-    // Format: iv:authTag:encrypted
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   } catch (error) {
     logger.log('error', 'Encryption failed', { details: error });
@@ -49,7 +45,6 @@ export function decrypt(text: string): string {
   try {
     const parts = text.split(':');
     if (parts.length !== 3) {
-        // Fallback for unencrypted legacy data if necessary, or just throw
         return text; 
     }
     
@@ -73,7 +68,6 @@ export function decrypt(text: string): string {
     return decrypted;
   } catch (error) {
     logger.log('error', 'Decryption failed', { details: error });
-    // Return original text if decryption fails (might be unencrypted data)
     return text;
   }
 }

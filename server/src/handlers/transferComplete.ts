@@ -16,7 +16,6 @@ export function handleTransferComplete(socket: Socket) {
       
       sessionManager.remove(fileId);
       
-      // Decrement session count for this IP
       sessionLimiter.decrementSession(socket.handshake.address);
       
       logger.log('info', 'Transfer completed - session deleted', { fileId, socketId: socket.id });

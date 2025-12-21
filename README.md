@@ -44,7 +44,8 @@ npm install
 
 # Configure Environment
 cp .env.example .env
-# Generate a 32-byte hex key for encryption
+# Edit .env with your database URL and other settings
+# Generate a 32-byte hex key for encryption:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 # Initialize Database
@@ -52,38 +53,65 @@ npx prisma generate
 npx prisma migrate dev
 
 # Start Server
-npm run dev
+npm run dev  # Development
+npm run build && npm start  # Production
 ```
 
 ### 2. Client Setup
 ```bash
 cd client
 npm install
-npm run dev
+
+# Configure Environment
+cp .env.example .env
+# Edit .env with your server URL
+
+# Start Client
+npm run dev  # Development
+npm run build && npm start  # Production
 ```
 
 Visit `http://localhost:3000` to start sharing.
 
+## 📦 Production Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production deployment instructions including:
+- Hosting on Railway, Render, Vercel
+- SSL/HTTPS configuration (required for WebRTC)
+- TURN server setup
+- Environment variable configuration
+- Security best practices
+
 ## 🔐 Environment Variables
 
-Create a `.env` file in the `server` directory:
+### Server (.env)
 
 ```env
-# Database Connection
+# Database Connection (REQUIRED)
 DATABASE_URL="postgresql://user:pass@localhost:5432/transferlvania"
 
-# Security (REQUIRED)
-# 64-character hex string for AES-256 metadata encryption
-METADATA_ENCRYPTION_KEY="your-generated-key-here"
+# Client URL for CORS (REQUIRED)
+CLIENT_URL="http://localhost:3000"
 
 # Server Config
 PORT=4000
 NODE_ENV="development"
 
-# TURN Server (Optional - for production NAT traversal)
+# Security (REQUIRED for production)
+# 64-character hex string for AES-256 metadata encryption
+METADATA_ENCRYPTION_KEY="your-generated-key-here"
+
+# TURN Server (Optional - improves connectivity)
 TURN_SERVER="turn.yourdomain.com"
 TURN_SECRET="your-turn-secret"
 TURNS_ENABLED="true"
+```
+
+### Client (.env.local)
+
+```env
+# Server URL (REQUIRED)
+NEXT_PUBLIC_SERVER_URL="http://localhost:4000"
 ```
 
 ## 🛡️ Security Implementation
@@ -95,3 +123,5 @@ TURNS_ENABLED="true"
 - **Sanitization**: File extensions checked against a blocklist of dangerous types (e.g., .exe, .sh).
 
 MIT License
+
+

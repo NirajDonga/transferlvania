@@ -21,13 +21,12 @@ import { securityHeaders } from "./middleware/securityHeaders.js";
 import { sessionLimiter } from "./middleware/sessionLimiter.js";
 import { validateEnvironment } from "./utils/envValidation.js";
 
-// Validate environment variables before starting server
 const config = validateEnvironment();
 
 const app = express();
 app.use(securityHeaders);
 app.use(cors({
-  origin: "http://localhost:3000",
+  origin: config.CLIENT_URL,
   credentials: true,
 }));
 app.use(express.json());
@@ -49,7 +48,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: config.CLIENT_URL,
     methods: ["GET", "POST"],
   },
 });

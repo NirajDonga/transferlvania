@@ -203,7 +203,6 @@ export function handleJoinRoom(socket: Socket, io: any) {
 
       socket.join(fileId);
 
-      // Decrypt metadata for processing
       const decryptedFileName = decrypt(session.fileName);
       const decryptedFileType = decrypt(session.fileType);
 
