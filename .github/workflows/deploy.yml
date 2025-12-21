@@ -49,14 +49,26 @@ jobs:
             client/.dockerignore \
             docker-compose.yml
       
+      - name: Debug Connection Info
+        run: |
+          echo "Testing connection to VM..."
+          echo "Host: ${{ secrets.VM_HOST }}"
+          echo "User: ${{ secrets.VM_USER }}"
+          ping -c 3 ${{ secrets.VM_HOST }} || true
+          nc -zv -w 5 ${{ secrets.VM_HOST }} 22 || true
+      
       - name: Upload to VM
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          port: 22
           source: "deploy.tar.gz"
           target: "/tmp/"
+          timeout: 60s
+          command_timeout: 10m
+          debug: true
       
       - name: Deploy
         uses: appleboy/ssh-action@master
@@ -64,6 +76,10 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          port: 22
+          timeout: 60s
+          command_timeout: 10m
+          debug: true
           script: |
             cd ~/transferlvania
             tar -xzf /tmp/deploy.tar.gz
