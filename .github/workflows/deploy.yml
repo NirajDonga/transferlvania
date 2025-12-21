@@ -2,102 +2,71 @@ name: Deploy to VM
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
       
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Build Backend
-        working-directory: ./server
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Build backend on GitHub
+      - name: Build backend image
         run: |
-          npm ci
-          npx prisma generate
-          npm run build
+          docker build -t transferlvania-backend:${{ github.sha }} ./server
+          docker save transferlvania-backend:${{ github.sha }} > backend.tar
       
-      - name: Build Frontend
-        working-directory: ./client
-        env:
-          NEXT_PUBLIC_SERVER_URL: ${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+      # Build frontend on GitHub
+      - name: Build frontend image
         run: |
-          npm ci
-          npm run build
+          docker build -t transferlvania-frontend:${{ github.sha }} ./client
+          docker save transferlvania-frontend:${{ github.sha }} > frontend.tar
       
-      - name: Package
-        run: |
-          tar -czf deploy.tar.gz \
-            server/dist \
-            server/package*.json \
-            server/prisma \
-            server/Dockerfile \
-            server/.dockerignore \
-            client/.next \
-            client/package*.json \
-            client/next.config.ts \
-            client/Dockerfile \
-            client/.dockerignore \
-            docker-compose.yml
-      
-      - name: Debug Connection Info
-        run: |
-          echo "Testing connection to VM..."
-          echo "Host: ${{ secrets.VM_HOST }}"
-          echo "User: ${{ secrets.VM_USER }}"
-          ping -c 3 ${{ secrets.VM_HOST }} || true
-          nc -zv -w 5 ${{ secrets.VM_HOST }} 22 || true
-      
-      - name: Upload to VM
+      # Transfer images to VM
+      - name: Copy images to VM
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          port: 22
-          source: "deploy.tar.gz"
+          source: "backend.tar,frontend.tar"
           target: "/tmp/"
-          timeout: 60s
-          command_timeout: 10m
-          debug: true
       
-      - name: Deploy
+      # Deploy on VM
+      - name: Deploy to VM
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          port: 22
-          timeout: 60s
-          command_timeout: 10m
-          debug: true
           script: |
-            cd ~/transferlvania
-            tar -xzf /tmp/deploy.tar.gz
-            rm /tmp/deploy.tar.gz
+            cd /home/azureuser/transferlvania
+            git pull origin main
             
+            # Load images built on GitHub
+            docker load < /tmp/backend.tar
+            docker load < /tmp/frontend.tar
+            docker tag transferlvania-backend:${{ github.sha }} transferlvania-backend:latest
+            docker tag transferlvania-frontend:${{ github.sha }} transferlvania-frontend:latest
+            
+            # Create .env
             cat > .env << EOF
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
             CLIENT_URL=${{ secrets.CLIENT_URL }}
-            NODE_ENV=production
+            NEXT_PUBLIC_SERVER_URL=${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+            PORT=4000
+            TURN_SECRET=${{ secrets.TURN_SECRET }}
             EOF
             
+            # Deploy with pre-built images
             docker-compose down
-            docker-compose up -d --build
+            docker-compose up -d
+            sleep 10
+            docker-compose exec -T backend npx prisma migrate deploy
             
-            echo "Deployment complete!"
-            docker ps
-            docker-compose logs --tail=30
-
-
-            # change
+            # Cleanup
+            rm /tmp/backend.tar /tmp/frontend.tar
