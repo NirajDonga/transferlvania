@@ -81,8 +81,6 @@ jobs:
           port: 22
           timeout: 60s
           command_timeout: 30m
-          script_stop: true
-          ssh_option: "-o StrictHostKeyChecking=no"
           script: |
             set -e
             
@@ -117,3 +115,5 @@ jobs:
             
             # Show status
             docker-compose ps
+
+            #added docker to vm
