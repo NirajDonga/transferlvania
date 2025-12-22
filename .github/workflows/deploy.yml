@@ -104,16 +104,16 @@ jobs:
             EOF
             
             # Deploy with Docker
-            docker-compose down || true
-            docker-compose up -d --build
+            docker compose down || true
+            docker compose up -d --build
             
             # Wait for services
             sleep 10
             
             # Run migrations
-            docker-compose exec -T backend npx prisma migrate deploy
+            docker compose exec -T backend npx prisma migrate deploy
             
             # Show status
-            docker-compose ps
+            docker compose ps
 
             #added docker to vm
