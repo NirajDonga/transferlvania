@@ -65,6 +65,11 @@ jobs:
           port: 22
           source: "deploy.tar.gz"
           target: "/tmp/"
+          strip_components: 0
+          overwrite: true
+          timeout: 60s
+          command_timeout: 10m
+          ssh_option: "-o StrictHostKeyChecking=no"
       
       # Deploy Application
       - name: Deploy Application
@@ -74,6 +79,10 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           port: 22
+          timeout: 60s
+          command_timeout: 30m
+          script_stop: true
+          ssh_option: "-o StrictHostKeyChecking=no"
           script: |
             set -e
             
