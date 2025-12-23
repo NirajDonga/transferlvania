@@ -1,5 +1,3 @@
-import { logger } from './logger.js';
-
 interface EnvironmentConfig {
   DATABASE_URL: string;
   PORT: number;
@@ -56,7 +54,6 @@ export function validateEnvironment(): EnvironmentConfig {
   }
 
   if (errors.length > 0) {
-    logger.log('error', 'Environment validation failed', { details: errors });
     console.error('\n❌ Environment Configuration Errors:');
     errors.forEach(err => console.error(`  - ${err}`));
     console.error('\nPlease check your .env file and ensure all required variables are set correctly.\n');
@@ -64,7 +61,6 @@ export function validateEnvironment(): EnvironmentConfig {
   }
 
   if (warnings.length > 0) {
-    logger.log('warn', 'Environment validation warnings', { details: warnings });
     console.warn('\n⚠️  Environment Configuration Warnings:');
     warnings.forEach(warn => console.warn(`  - ${warn}`));
     console.warn('');

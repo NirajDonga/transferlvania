@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { logger } from './logger.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16; // For AES, this is always 16
@@ -36,7 +35,7 @@ export function encrypt(text: string): string {
     
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   } catch (error) {
-    logger.log('error', 'Encryption failed', { details: error });
+    console.error('Encryption failed:', error);
     throw new Error('Encryption failed');
   }
 }
@@ -67,7 +66,7 @@ export function decrypt(text: string): string {
     
     return decrypted;
   } catch (error) {
-    logger.log('error', 'Decryption failed', { details: error });
+    console.error('Decryption failed:', error);
     return text;
   }
 }

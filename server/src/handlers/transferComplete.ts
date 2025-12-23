@@ -1,26 +1,22 @@
 import { Socket } from "socket.io";
 import prisma from "../utils/prisma.js";
 import { sessionManager } from "../utils/sessionManager.js";
-import { logger } from "../utils/logger.js";
-import { validateUUID } from "../utils/validation.js";
-import { sessionLimiter } from "../middleware/sessionLimiter.js";
 
 export function handleTransferComplete(socket: Socket) {
   socket.on("transfer-complete", async ({ fileId }) => {
     if (!fileId || typeof fileId !== 'string') return;
     
     try {
-      await prisma.fileSession.delete({
+      await prisma.fileSession.update({
         where: { id: fileId },
+        data: { status: "completed" },
       });
       
       sessionManager.remove(fileId);
       
-      sessionLimiter.decrementSession(socket.handshake.address);
-      
-      logger.log('info', 'Transfer completed - session deleted', { fileId, socketId: socket.id });
+      socket.to(fileId).emit("transfer-complete-ack");
     } catch (error) {
-      logger.log('error', 'Error deleting completed session', { fileId, details: error });
+      console.error('Error updating completed session:', error);
     }
   });
 }

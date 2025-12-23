@@ -29,13 +29,11 @@ export default function Home() {
   useEffect(() => {
     getIceServers().then(servers => {
       RTC_CONFIG = { iceServers: servers };
-      console.log('ICE servers configured:', servers.length, 'servers');
     });
 
     const handleReceiverJoined = ({ receiverId }: { receiverId: string }) => {
       if (isNegotiating.current || peerRef.current) return;
       
-      console.log("Receiver found. Locking connection.");
       isNegotiating.current = true;
       setStatus("Receiver found! Initiating connection...");
       startP2PConnection(receiverId);
@@ -52,7 +50,6 @@ export default function Home() {
     };
 
     const handleTransferCancelled = ({ reason }: { reason: string }) => {
-      console.log("Transfer cancelled by receiver:", reason);
       setIsCancelled(true);
       setIsTransferActive(false);
       setStatus(`Transfer stopped: ${reason}`);
@@ -62,13 +59,11 @@ export default function Home() {
     };
 
     const handleTransferPaused = () => {
-      console.log("Transfer paused by receiver");
       setIsTransferActive(false);
       setStatus("Transfer paused by receiver");
     };
 
     const handleTransferResumed = () => {
-      console.log("Transfer resumed by receiver");
       setIsTransferActive(true);
       setStatus("Transfer resumed");
     };
@@ -170,7 +165,6 @@ export default function Home() {
       
       channel.onmessage = (event) => {
           if (event.data === "START_TRANSFER") {
-              console.log("Receiver accepted! Starting transfer...");
               setIsTransferActive(true);
               sendFile();
           }
@@ -236,8 +230,6 @@ export default function Home() {
         
         const percent = Math.round((offset / selectedFile.size) * 100);
         setProgress(percent);
-        
-        console.log(`Sent: ${offset} / ${selectedFile.size} bytes (${percent}%)`);
 
         if (offset < selectedFile.size) {
             if (channel.bufferedAmount > channel.bufferedAmountLowThreshold) {

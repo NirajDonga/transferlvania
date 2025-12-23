@@ -34,7 +34,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
   useEffect(() => {
     getIceServers().then(servers => {
       RTC_CONFIG = { iceServers: servers };
-      console.log('ICE servers configured:', servers.length, 'servers');
     });
 
     const initStreamSaver = async () => {
