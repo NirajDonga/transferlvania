@@ -1,12 +1,13 @@
-import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+
+const SALT_ROUNDS = 10;
 
 export function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  return bcrypt.hashSync(password, SALT_ROUNDS);
 }
 
 export function verifyPassword(password: string, hash: string): boolean {
-  const inputHash = hashPassword(password);
-  return inputHash === hash;
+  return bcrypt.compareSync(password, hash);
 }
 
 export function validatePassword(password: unknown): { valid: boolean; error?: string } {

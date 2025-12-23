@@ -88,8 +88,8 @@ io.on("connection", (socket) => {
 });
 
 server.listen(config.PORT, () => {
-  console.log(`🚀 Server running on port ${config.PORT}`);
-  console.log(`📡 Client URL: ${config.CLIENT_URL}`);
+  console.log(` Server running on port ${config.PORT}`);
+  console.log(` Client URL: ${config.CLIENT_URL}`);
 });
 
 // Graceful shutdown
