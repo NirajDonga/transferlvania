@@ -122,7 +122,7 @@ export default function Home() {
       setStatus("Waiting for receiver...");
       
       if (warnings && warnings.length > 0) {
-        alert(`⚠️ FILE SAFETY NOTICE ⚠️\n\n${warnings.join('\n\n')}\n\nThe receiver will be warned about this file type.`);
+        alert(`FILE SAFETY NOTICE\n\n${warnings.join('\n\n')}\n\nThe receiver will be warned about this file type.`);
       }
     });
 
@@ -340,7 +340,7 @@ export default function Home() {
         {progress > 0 && (
           <div className="mb-6 animate-fade-in">
             <div className="flex justify-between mb-2">
-              <span className="text-xs text-gray-300 animate-pulse">⬆️ Uploading...</span>
+              <span className="text-xs text-gray-300 animate-pulse">Uploading...</span>
               <span className="text-xs font-bold text-purple-300 animate-bounce">{progress}%</span>
             </div>
             <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden shadow-inner">

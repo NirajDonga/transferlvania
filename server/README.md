@@ -19,7 +19,7 @@ server/
 
 ## Features Implemented
 
-### ✅ Rate Limiting (Custom Implementation)
+### Rate Limiting (Custom Implementation)
 - **Connection Rate Limit**: 10 connections per minute per IP
 - **Upload Init Rate Limit**: 5 uploads per 5 minutes per socket
 - **Join Room Rate Limit**: 20 room joins per minute per socket
@@ -27,7 +27,7 @@ server/
 - No external dependencies - custom in-memory rate limiter
 - Automatic cleanup of expired entries
 
-### ✅ Input Validation
+### Input Validation
 - File name sanitization (removes path traversal, dangerous characters)
 - File size validation (max 100GB, BigInt support)
 - File type validation with dangerous file detection
@@ -35,7 +35,7 @@ server/
 - Socket ID validation
 - Dangerous file extension warnings (executables, scripts)
 
-### ✅ Security Features
+### Security Features
 - CORS restricted to `http://localhost:3000` only
 - Password protection for file transfers (bcrypt hashing)
 - DDoS protection middleware
@@ -44,14 +44,14 @@ server/
 - Path traversal protection
 - Suspicious activity tracking
 
-### ✅ Session Management
+### Session Management
 - Automatically deletes sessions older than 24 hours
 - Session cleanup runs every hour
 - Per-IP session limits
 - Prevents database bloat
 - Transfer state tracking (waiting, active, completed)
 
-### ✅ Code Organization
+### Code Organization
 - Separated concerns into handlers, middleware, and utilities
 - Reusable validation functions
 - Comprehensive logging system
@@ -90,19 +90,19 @@ export const joinRoomLimiter = new RateLimiter(60000, 20);
 
 ## Security Features
 
-1. ✅ CORS restricted to localhost
-2. ✅ Input validation on all socket events
-3. ✅ Rate limiting on connections and operations
-4. ✅ SQL injection protection (Prisma ORM)
-5. ✅ Session expiration (24 hour TTL)
-6. ✅ Path traversal protection
-7. ✅ File size limits (100GB max)
-8. ✅ Password protection (bcrypt hashing)
-9. ✅ DDoS protection middleware
-10. ✅ Security headers middleware
-11. ✅ Dangerous file type warnings
-12. ✅ Suspicious activity tracking
-13. ✅ Per-IP session limits
+1. CORS restricted to localhost
+2. Input validation on all socket events
+3. Rate limiting on connections and operations
+4. SQL injection protection (Prisma ORM)
+5. Session expiration (24 hour TTL)
+6. Path traversal protection
+7. File size limits (100GB max)
+8. Password protection (bcrypt hashing)
+9. DDoS protection middleware
+10. Security headers middleware
+11. Dangerous file type warnings
+12. Suspicious activity tracking
+13. Per-IP session limits
 
 ## Architecture Decisions
 

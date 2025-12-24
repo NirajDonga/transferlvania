@@ -68,7 +68,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
     }) => {
       if (meta.isDangerous && meta.warnings) {
         const proceed = confirm(
-          `⚠️ SECURITY WARNING ⚠️\n\n${meta.warnings.join('\n\n')}\n\nFile: ${meta.fileName}\n\nDo you want to proceed with downloading this potentially dangerous file?`
+          `SECURITY WARNING\n\n${meta.warnings.join('\n\n')}\n\nFile: ${meta.fileName}\n\nDo you want to proceed with downloading this potentially dangerous file?`
         );
         
         if (!proceed) {
@@ -311,7 +311,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
               disabled={isSelectingLocation}
               className={`bg-linear-to-r from-purple-500 via-pink-500 to-purple-600 hover:from-purple-600 hover:via-pink-600 hover:to-purple-700 text-white font-bold py-4 px-10 rounded-full transition-all transform hover:scale-105 shadow-2xl text-lg ${isSelectingLocation ? 'opacity-75 cursor-wait' : 'animate-pulse'}`}
             >
-              {isSelectingLocation ? '📂 Selecting Location...' : '⬇️ Download File'}
+              {isSelectingLocation ? 'Selecting Location...' : 'Download File'}
             </button>
             {!isSelectingLocation && (
                 <p className="text-xs text-purple-300/70">

@@ -1,4 +1,4 @@
-# 🚀 Transferlvania
+# Transferlvania
 
 **High-Performance P2P File Sharing Platform**
 
@@ -16,7 +16,7 @@ Transferlvania enables secure, direct file transfers between browsers using WebR
 - **Password Protection**: Optional SHA-256 hashed password protection for transfers.
 - **Resilience**: Automatic backpressure handling for slow networks and connection recovery.
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 graph LR
@@ -31,7 +31,7 @@ graph LR
 - **Database**: PostgreSQL (via Prisma ORM)
 - **Security**: AES-256-GCM (Metadata), SHA-256 (Passwords), Rate Limiting
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 18+
@@ -114,7 +114,7 @@ TURNS_ENABLED="true"
 NEXT_PUBLIC_SERVER_URL="http://localhost:4000"
 ```
 
-## 🛡️ Security Implementation
+## Security Implementation
 
 - **Metadata**: Filenames and MIME types are encrypted before storage using `AES-256-GCM`.
 - **File Data**: Never touches the server. Streams directly P2P.
