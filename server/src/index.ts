@@ -47,7 +47,6 @@ const io = new Server(server, {
   },
 });
 
-// Cleanup old sessions every hour
 setInterval(async () => {
   try {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -56,6 +55,9 @@ setInterval(async () => {
         createdAt: {
           lt: oneDayAgo,
         },
+        status: {
+          in: ["waiting", "completed"]
+        }
       },
     });
     
