@@ -15,6 +15,7 @@ import {
 import { handleTransferComplete } from "./handlers/transferComplete.js";
 import { sessionManager } from "./utils/sessionManager.js";
 import { validateEnvironment } from "./utils/envValidation.js";
+import { getIceServers } from "./utils/turnCredentials.js";
 
 const config = validateEnvironment();
 
@@ -27,7 +28,6 @@ app.use(express.json());
 
 app.get('/api/ice-servers', (req, res) => {
   try {
-    const { getIceServers } = require('./utils/turnCredentials.js');
     const iceServers = getIceServers();
     res.json({ iceServers });
   } catch (error) {

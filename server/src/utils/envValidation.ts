@@ -11,7 +11,8 @@ export function validateEnvironment(): EnvironmentConfig {
 
   if (!process.env.DATABASE_URL) {
     errors.push('DATABASE_URL is required');
-  } else if (!process.env.DATABASE_URL.startsWith('postgresql://') && !process.env.DATABASE_URL.startsWith('postgres://')) {
+  } 
+  else if (!process.env.DATABASE_URL.startsWith('postgresql://') && !process.env.DATABASE_URL.startsWith('postgres://')) {
     warnings.push('DATABASE_URL does not appear to be a valid PostgreSQL connection string');
   }
 
