@@ -12,6 +12,7 @@ model FileSession {
   fileName     String
   fileSize     BigInt
   fileType     String
+  fileHash     String?
   passwordHash String?
   status       String   @default("waiting")
   createdAt    DateTime @default(now())

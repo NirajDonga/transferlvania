@@ -30,6 +30,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
   const isCancelledRef = useRef(false);
   const lastProgress = useRef(0);
   const fileStreamRef = useRef<any>(null);
+  const receivedChunksRef = useRef<Uint8Array[]>([]);
 
   useEffect(() => {
     getIceServers().then(servers => {
@@ -62,6 +63,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       fileName: string;
       fileSize: number;
       fileType: string;
+      fileHash?: string;
       isDangerous?: boolean;
       warnings?: string[];
     }) => {
@@ -114,7 +116,10 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
             const chunk = e.data;
 
             try {
-              await writerRef.current.write(new Uint8Array(chunk));
+              const chunkArray = new Uint8Array(chunk);
+              receivedChunksRef.current.push(chunkArray);
+              
+              await writerRef.current.write(chunkArray);
               
               receivedBytes.current += chunk.byteLength;
               const meta = fileMetaRef.current;
@@ -129,14 +134,27 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
                  }
 
                  if (receivedBytes.current >= total) {
-                    setStatus("Download Complete!");
-                    setIsDownloading(false);
+                    setStatus("Verifying file integrity...");
                     
                     if (writerRef.current) {
                         await writerRef.current.close();
                         writerRef.current = null;
                     }
                     
+                    if (meta.fileHash) {
+                      const receivedHash = await calculateHash(receivedChunksRef.current);
+                      
+                      if (receivedHash !== meta.fileHash) {
+                        setStatus("Error: File integrity check failed!");
+                        alert("File integrity verification failed. The downloaded file may be corrupted.");
+                      } else {
+                        setStatus("Download Complete! File verified.");
+                      }
+                    } else {
+                      setStatus("Download Complete!");
+                    }
+                    
+                    setIsDownloading(false);
                     socket.emit("transfer-complete", { fileId });
                  }
               }
@@ -175,6 +193,19 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
     socket.emit("join-room", { fileId, password });
   };
 
+  const calculateHash = async (chunks: Uint8Array[]): Promise<string> => {
+    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
   const handleAcceptDownload = async () => {
     if (!streamSaverRef.current || !dataChannelRef.current || !fileMetaRef.current) {
         alert("Not ready yet. Please wait.");
@@ -184,6 +215,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
     setIsSelectingLocation(true);
     isCancelledRef.current = false;
     receivedBytes.current = 0;
+    receivedChunksRef.current = [];
     setProgress(0);
     setStatus("Please select where to save the file...");
     
@@ -231,6 +263,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
         writerRef.current = null;
     }
     
+    receivedChunksRef.current = [];
     setProgress(0);
     receivedBytes.current = 0;
     setIsDownloading(false);

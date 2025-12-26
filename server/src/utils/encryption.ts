@@ -5,22 +5,22 @@ const IV_LENGTH = 16;
 const SALT_LENGTH = 64;
 const TAG_LENGTH = 16;
 
+if (!process.env.METADATA_ENCRYPTION_KEY) {
+  console.error('FATAL: METADATA_ENCRYPTION_KEY environment variable is required');
+  process.exit(1);
+}
+
 let ENCRYPTION_KEY: Buffer;
 
 try {
-  if (process.env.METADATA_ENCRYPTION_KEY) {
-    if (process.env.METADATA_ENCRYPTION_KEY.length === 64) {
-        ENCRYPTION_KEY = Buffer.from(process.env.METADATA_ENCRYPTION_KEY, 'hex');
-    } else {
-        ENCRYPTION_KEY = crypto.scryptSync(process.env.METADATA_ENCRYPTION_KEY, 'salt', 32);
-    }
+  if (process.env.METADATA_ENCRYPTION_KEY.length === 64) {
+    ENCRYPTION_KEY = Buffer.from(process.env.METADATA_ENCRYPTION_KEY, 'hex');
   } else {
-    console.warn('WARNING: METADATA_ENCRYPTION_KEY not set. Using temporary random key. Data will be unreadable after restart.');
-    ENCRYPTION_KEY = crypto.randomBytes(32);
+    ENCRYPTION_KEY = crypto.scryptSync(process.env.METADATA_ENCRYPTION_KEY, 'salt', 32);
   }
 } catch (error) {
   console.error('Failed to initialize encryption key:', error);
-  ENCRYPTION_KEY = crypto.randomBytes(32);
+  process.exit(1);
 }
 
 export function encrypt(text: string): string {

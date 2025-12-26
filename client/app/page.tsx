@@ -112,10 +112,14 @@ export default function Home() {
     setShowPasswordInput(true);
   };
 
-  const handleStartUpload = () => {
+  const handleStartUpload = async () => {
     if (!selectedFile) return;
     
     setShowPasswordInput(false);
+    setStatus("Calculating file hash...");
+    
+    const fileHash = await calculateFileHash(selectedFile);
+    
     setStatus("Registering file...");
     
     socket.once("upload-created", ({ fileId, warnings }: { fileId: string; warnings?: string[] }) => {
@@ -132,8 +136,16 @@ export default function Home() {
       fileName: selectedFile.name,
       fileSize: selectedFile.size,
       fileType: selectedFile.type,
+      fileHash: fileHash,
       password: password || undefined,
     });
+  };
+
+  const calculateFileHash = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   };
 
   const handleStopTransfer = () => {

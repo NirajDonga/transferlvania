@@ -28,6 +28,11 @@ export function handleUploadInit(socket: Socket) {
         return;
       }
 
+      if (!data.fileHash || typeof data.fileHash !== 'string') {
+        socket.emit("error", { message: "File hash is required" });
+        return;
+      }
+
       const fileNameValidation = validateFileName(data.fileName);
       if (!fileNameValidation.valid) {
         socket.emit("error", { message: fileNameValidation.error });
@@ -71,6 +76,7 @@ export function handleUploadInit(socket: Socket) {
           fileName: encrypt(fileNameValidation.sanitized!),
           fileSize: BigInt(data.fileSize),
           fileType: encrypt(fileTypeValidation.sanitized!),
+          fileHash: data.fileHash,
           passwordHash: passwordHash,
           status: "waiting",
         },
@@ -142,7 +148,8 @@ export function handleJoinRoom(socket: Socket, io: any) {
       socket.emit("file-meta", {
         fileName: decryptedFileName,
         fileSize: session.fileSize.toString(),
-        fileType: decryptedFileType
+        fileType: decryptedFileType,
+        fileHash: session.fileHash
       });
 
       socket.to(fileId).emit("receiver-joined", { receiverId: socket.id });
