@@ -4,10 +4,10 @@ export function validateFileName(fileName: unknown): { valid: boolean; sanitized
   }
 
   const sanitized = fileName
-    .replace(/\.\./g, '') // Remove ..
-    .replace(/[\/\\]/g, '_') // Replace slashes
-    .replace(/[<>:"|?*\x00-\x1f]/g, '_') // Remove invalid characters
-    .substring(0, 255); // Limit length
+    .replace(/\.\./g, '')
+    .replace(/[\/\\]/g, '_')
+    .replace(/[<>:"|?*\x00-\x1f]/g, '_')
+    .substring(0, 255);
 
   if (sanitized.length === 0) {
     return { valid: false, error: "File name becomes empty after sanitization" };
@@ -32,27 +32,30 @@ export function validateFileSize(fileSize: unknown, maxSize: number = 100 * 1024
   return { valid: true, size: fileSize };
 }
 
-const DANGEROUS_EXTENSIONS = [
+const BLOCKED_EXTENSIONS = [
   'exe', 'dll', 'bat', 'cmd', 'com', 'scr', 'pif', 'vbs', 'js', 'jse',
   'wsf', 'wsh', 'msi', 'msp', 'hta', 'cpl', 'jar', 'ps1', 'psm1',
-  'reg', 'vb', 'vbe', 'ws', 'application', 'gadget', 'msc', 'lnk'
+  'reg', 'vb', 'vbe', 'ws', 'application', 'gadget', 'msc', 'lnk',
+  'app', 'deb', 'rpm', 'dmg', 'pkg', 'run', 'bin', 'elf'
 ];
 
-const SUSPICIOUS_MIME_TYPES = [
+const BLOCKED_MIME_TYPES = [
   'application/x-msdownload',
   'application/x-msdos-program',
   'application/x-executable',
   'application/x-bat',
   'application/x-sh',
+  'application/x-shellscript',
   'text/x-script.python',
+  'application/x-perl',
+  'application/x-ruby',
+  'application/x-php',
 ];
 
 export function validateFileType(fileType: unknown): { 
   valid: boolean; 
   sanitized?: string; 
   error?: string;
-  isDangerous?: boolean;
-  warningMessage?: string;
 } {
   if (!fileType || typeof fileType !== 'string') {
     return { valid: false, error: "Invalid file type" };
@@ -60,50 +63,48 @@ export function validateFileType(fileType: unknown): {
 
   const sanitized = fileType.substring(0, 100).toLowerCase();
   
-  const isDangerousMime = SUSPICIOUS_MIME_TYPES.some(mime => sanitized.includes(mime));
-  if (isDangerousMime) {
+  const isBlockedMime = BLOCKED_MIME_TYPES.some(mime => sanitized.includes(mime));
+  if (isBlockedMime) {
     return {
-      valid: true,
-      sanitized,
-      isDangerous: true,
-      warningMessage: "This file type may contain executable code. Exercise extreme caution."
+      valid: false,
+      error: "This file type is not allowed for security reasons. Executable files and scripts are blocked to prevent malware distribution."
     };
   }
 
   return { valid: true, sanitized };
 }
 
-export function checkDangerousFileExtension(fileName: string): {
-  isDangerous: boolean;
-  warningMessage?: string;
+export function validateFileExtension(fileName: string): {
+  valid: boolean;
+  error?: string;
   extension?: string;
 } {
   const parts = fileName.toLowerCase().split('.');
   if (parts.length < 2) {
-    return { isDangerous: false };
+    return { valid: true };
   }
 
   const extension = parts[parts.length - 1]!;
   
-  if (DANGEROUS_EXTENSIONS.includes(extension)) {
+  if (BLOCKED_EXTENSIONS.includes(extension)) {
     return {
-      isDangerous: true,
+      valid: false,
       extension: extension,
-      warningMessage: `WARNING: .${extension} files can execute code on your computer. Only download if you trust the sender.`
+      error: `Files with .${extension} extension are not allowed. This file type can execute code and pose security risks.`
     };
   }
 
   const secondLastExtension = parts[parts.length - 2];
-  const hasDoubleExtension = parts.length > 2 && secondLastExtension && DANGEROUS_EXTENSIONS.includes(secondLastExtension);
+  const hasDoubleExtension = parts.length > 2 && secondLastExtension && BLOCKED_EXTENSIONS.includes(secondLastExtension);
   if (hasDoubleExtension && secondLastExtension) {
     return {
-      isDangerous: true,
+      valid: false,
       extension: secondLastExtension,
-      warningMessage: "WARNING: This file has a disguised executable extension. This is a common malware technique."
+      error: `This file has a disguised executable extension (.${secondLastExtension}). This is blocked as it's a common malware technique.`
     };
   }
 
-  return { isDangerous: false };
+  return { valid: true };
 }
 
 export function validateUUID(id: unknown): { valid: boolean; error?: string } {

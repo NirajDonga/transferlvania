@@ -74,7 +74,6 @@ setInterval(async () => {
 io.on("connection", (socket) => {
   console.log('User connected:', socket.id);
 
-  // Register all socket event handlers
   handleUploadInit(socket);
   handleJoinRoom(socket, io);
   handleSignal(socket, io);
@@ -94,7 +93,6 @@ server.listen(config.PORT, () => {
   console.log(` Client URL: ${config.CLIENT_URL}`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('Shutting down gracefully...');
   io.close();

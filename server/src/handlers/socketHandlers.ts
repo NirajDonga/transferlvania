@@ -1,6 +1,6 @@
 import { Socket } from "socket.io";
 import prisma from "../utils/prisma.js";
-import { validateFileName, validateFileSize, validateFileType, validateUUID, validateSocketId, checkDangerousFileExtension } from "../utils/validation.js";
+import { validateFileName, validateFileSize, validateFileType, validateFileExtension, validateUUID, validateSocketId } from "../utils/validation.js";
 import { hashPassword, verifyPassword, validatePassword } from "../utils/password.js";
 import { sessionManager } from "../utils/sessionManager.js";
 import { encrypt, decrypt } from "../utils/encryption.js";
@@ -46,9 +46,11 @@ export function handleUploadInit(socket: Socket) {
         return;
       }
 
-      const dangerousCheck = checkDangerousFileExtension(data.fileName);
-      const fileTypeWarning = fileTypeValidation.isDangerous ? fileTypeValidation.warningMessage : null;
-      const extensionWarning = dangerousCheck.isDangerous ? dangerousCheck.warningMessage : null;
+      const extensionValidation = validateFileExtension(data.fileName);
+      if (!extensionValidation.valid) {
+        socket.emit("error", { message: extensionValidation.error });
+        return;
+      }
 
       let passwordHash: string | null = null;
       if (data.password) {
@@ -77,10 +79,8 @@ export function handleUploadInit(socket: Socket) {
       sessionManager.register(session.id, socket.id);
       socket.join(session.id);
 
-      const warnings = [extensionWarning, fileTypeWarning].filter(Boolean);
       socket.emit("upload-created", { 
-        fileId: session.id,
-        warnings: warnings.length > 0 ? warnings : undefined
+        fileId: session.id
       });
     } catch (error) {
       console.error('Database error on upload-init:', error);
@@ -138,24 +138,11 @@ export function handleJoinRoom(socket: Socket, io: any) {
 
       const decryptedFileName = decrypt(session.fileName);
       const decryptedFileType = decrypt(session.fileType);
-
-      const dangerousCheck = checkDangerousFileExtension(decryptedFileName);
-      const fileTypeValidation = validateFileType(decryptedFileType);
-      
-      const warnings = [];
-      if (dangerousCheck.isDangerous) {
-        warnings.push(dangerousCheck.warningMessage);
-      }
-      if (fileTypeValidation.isDangerous) {
-        warnings.push(fileTypeValidation.warningMessage);
-      }
       
       socket.emit("file-meta", {
         fileName: decryptedFileName,
         fileSize: session.fileSize.toString(),
-        fileType: decryptedFileType,
-        isDangerous: dangerousCheck.isDangerous || fileTypeValidation.isDangerous,
-        warnings: warnings.length > 0 ? warnings : undefined
+        fileType: decryptedFileType
       });
 
       socket.to(fileId).emit("receiver-joined", { receiverId: socket.id });

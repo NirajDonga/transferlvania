@@ -49,7 +49,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       socket.emit("join-room", { fileId, password: pwd });
     };
 
-    // Handle errors (including password errors)
     socket.on("error", (error) => {
       if (error.passwordRequired) {
         setPasswordRequired(true);
@@ -84,7 +83,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       setStatus("Waiting for Sender...");
     });
 
-    // Initial join attempt (without password)
     tryJoinRoom();
 
     socket.on("signal", async ({ from, data }: { from: string; data: any }) => {
@@ -94,10 +92,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
         pc.ondatachannel = (event) => {
           const channel = event.channel;
           
-          // --- CRITICAL FIX START ---
-          // Force WebRTC to give us ArrayBuffers instead of Blobs
-          channel.binaryType = "arraybuffer"; 
-          // --- CRITICAL FIX END ---
+          channel.binaryType = "arraybuffer";
 
           dataChannelRef.current = channel;
 
@@ -114,13 +109,11 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
           };
           
           channel.onmessage = async (e) => {
-            // Guard clauses
             if (isCancelledRef.current || !writerRef.current) return;
 
-            const chunk = e.data; // ArrayBuffer
+            const chunk = e.data;
 
             try {
-              // Write directly to disk stream (no RAM accumulation)
               await writerRef.current.write(new Uint8Array(chunk));
               
               receivedBytes.current += chunk.byteLength;
@@ -130,24 +123,20 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
                  const total = parseInt(meta.fileSize);
                  const percent = Math.round((receivedBytes.current / total) * 100);
                  
-                 // Update UI every 1% to prevent lag
                  if (percent - lastProgress.current >= 1 || percent === 100) {
                     lastProgress.current = percent;
                     setProgress(percent);
                  }
 
-                 // Finish
                  if (receivedBytes.current >= total) {
                     setStatus("Download Complete!");
                     setIsDownloading(false);
                     
-                    // Close the writer
                     if (writerRef.current) {
                         await writerRef.current.close();
                         writerRef.current = null;
                     }
                     
-                    // Notify server that transfer is complete
                     socket.emit("transfer-complete", { fileId });
                  }
               }
@@ -199,7 +188,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
     setStatus("Please select where to save the file...");
     
     try {
-      // Create stream - this triggers the save dialog
       const fileStream = streamSaverRef.current.createWriteStream(fileMetaRef.current.fileName, {
           size: parseInt(fileMetaRef.current.fileSize)
       });
@@ -207,7 +195,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       const writer = fileStream.getWriter();
       writerRef.current = writer;
       
-      // Wait for the stream to actually be ready (user selected location)
       await new Promise((resolve) => {
         const checkReady = () => {
           if (writer.ready) {
@@ -219,7 +206,6 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
         checkReady();
       });
       
-      // Only NOW tell sender to start - after user selected location
       setStatus("Downloading...");
       dataChannelRef.current.send("START_TRANSFER");
       
@@ -235,13 +221,11 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
   };  const handleCancel = () => {
     isCancelledRef.current = true;
     
-    // Notify sender
     socket.emit("cancel-transfer", { 
       fileId, 
       reason: "Receiver cancelled the transfer" 
     });
     
-    // Abort the writer
     if (writerRef.current) {
         writerRef.current.abort().catch(() => {});
         writerRef.current = null;
@@ -342,5 +326,3 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
     </div>
   );
 }
-
-//temp

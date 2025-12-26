@@ -8,8 +8,8 @@ let RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-const CHUNK_SIZE = 16384; // 16KB chunks
-const MAX_BUFFER_AMOUNT = 65535; // 64KB Buffer limit
+const CHUNK_SIZE = 16384;
+const MAX_BUFFER_AMOUNT = 65535;
 
 export default function Home() {
   const [status, setStatus] = useState("Idle");
@@ -130,7 +130,7 @@ export default function Home() {
       fileName: selectedFile.name,
       fileSize: selectedFile.size,
       fileType: selectedFile.type,
-      password: password || undefined, // Optional password
+      password: password || undefined,
     });
   };
 
@@ -157,7 +157,6 @@ export default function Home() {
       peerRef.current = pc;
 
       const channel = pc.createDataChannel("file-transfer");
-      // CRITICAL: Set the threshold for Backpressure
       channel.bufferedAmountLowThreshold = MAX_BUFFER_AMOUNT; 
       dataChannelRef.current = channel;
 
