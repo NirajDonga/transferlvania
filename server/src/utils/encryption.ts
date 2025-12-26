@@ -2,8 +2,6 @@ import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
-const SALT_LENGTH = 64;
-const TAG_LENGTH = 16;
 
 if (!process.env.METADATA_ENCRYPTION_KEY) {
   console.error('FATAL: METADATA_ENCRYPTION_KEY environment variable is required');

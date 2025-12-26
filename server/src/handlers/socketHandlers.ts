@@ -118,6 +118,12 @@ export function handleJoinRoom(socket: Socket, io: any) {
         return;
       }
 
+      // Check if sender is still online
+      if (!sessionManager.getSender(fileId)) {
+        socket.emit("error", { message: "Sender is not online" });
+        return;
+      }
+
       if (session.passwordHash) {
         if (!password || typeof password !== 'string') {
           socket.emit("error", { message: "Password required", passwordRequired: true });

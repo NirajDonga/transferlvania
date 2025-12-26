@@ -23,10 +23,6 @@ class SessionManager {
     return session?.senderSocketId === socketId;
   }
 
-  remove(fileId: string) {
-    this.activeSessions.delete(fileId);
-  }
-
   cleanup(maxAgeMs: number = 24 * 60 * 60 * 1000) {
     const now = Date.now();
     for (const [fileId, session] of this.activeSessions.entries()) {
@@ -34,12 +30,6 @@ class SessionManager {
         this.activeSessions.delete(fileId);
       }
     }
-  }
-
-  getStats() {
-    return {
-      activeSessions: this.activeSessions.size,
-    };
   }
 
   getSessionsBySocket(socketId: string): string[] {

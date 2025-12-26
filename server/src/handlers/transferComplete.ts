@@ -6,13 +6,16 @@ export function handleTransferComplete(socket: Socket) {
   socket.on("transfer-complete", async ({ fileId }) => {
     if (!fileId || typeof fileId !== 'string') return;
     
+    const isInRoom = Array.from(socket.rooms).includes(fileId);
+    if (!isInRoom) return;
+    
     try {
       await prisma.fileSession.update({
         where: { id: fileId },
         data: { status: "completed" },
       });
       
-      sessionManager.remove(fileId);
+      sessionManager.removeSocket(socket.id);
       
       socket.to(fileId).emit("transfer-complete-ack");
     } catch (error) {
