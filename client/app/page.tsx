@@ -26,6 +26,8 @@ export default function Home() {
   const isNegotiating = useRef(false);
   const currentFileIdRef = useRef<string | null>(null);
 
+  const CLIENT_URL = process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';
+
   useEffect(() => {
     getIceServers().then(servers => {
       RTC_CONFIG = { iceServers: servers };
@@ -265,7 +267,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-linear-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-8 relative overflow-hidden">
-      {/* Animated background elements */}
+    
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute w-96 h-96 bg-purple-500 rounded-full blur-3xl opacity-20 -top-48 -left-48 animate-pulse"></div>
         <div className="absolute w-96 h-96 bg-blue-500 rounded-full blur-3xl opacity-20 -bottom-48 -right-48 animate-pulse" style={{animationDelay: '1s'}}></div>
@@ -280,9 +282,7 @@ export default function Home() {
           Transferlvania
         </h1>
         <div className="flex items-center justify-center gap-2 animate-fade-in" style={{animationDelay: '0.2s'}}>
-          <span className="text-yellow-400 animate-pulse">⚡</span>
           <p className="text-gray-300 text-sm font-medium">Lightning-fast P2P file sharing</p>
-          <span className="text-yellow-400 animate-pulse" style={{animationDelay: '0.5s'}}>⚡</span>
         </div>
       </div>
       
@@ -295,7 +295,7 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               <p className="text-sm text-gray-300 mb-1 font-semibold group-hover:text-purple-300 transition-colors">Click to upload or drag & drop</p>
-              <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">Any file, any size 🚀</p>
+              <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">Any file, any size</p>
             </div>
           </div>
           <input type="file" onChange={handleFileSelect} className="hidden"/>
@@ -303,7 +303,7 @@ export default function Home() {
         
         {showPasswordInput && selectedFile && (
           <div className="mb-6 animate-fade-in">
-            <label className="block text-sm text-purple-200 mb-2">🔒 Optional Password Protection</label>
+            <label className="block text-sm text-purple-200 mb-2">Optional Password Protection</label>
             <input
               type="password"
               value={password}
@@ -316,7 +316,7 @@ export default function Home() {
                 onClick={handleStartUpload}
                 className="flex-1 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
               >
-                {password ? "🔒 Start with Password" : "Start Upload"}
+                {password ? "Start with Password" : "Start Upload"}
               </button>
               <button
                 onClick={() => {
@@ -355,25 +355,25 @@ export default function Home() {
             onClick={handleStopTransfer}
             className="bg-linear-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold py-3 px-8 rounded-full mb-4 transition-all transform hover:scale-105 shadow-lg"
           >
-            🛑 Stop Transfer
+            Stop Transfer
           </button>
         )}
 
         {fileId && (
           <div className="bg-linear-to-br from-purple-500/20 to-blue-500/20 p-5 rounded-xl border border-purple-400/30 backdrop-blur-sm">
-            <p className="text-purple-200 mb-3 font-semibold text-sm flex items-center gap-2">
-              <span>🔗</span> Share this link:
+            <p className="text-purple-200 mb-3 font-semibold text-sm">
+              Share this link:
             </p>
             <div className="bg-black/30 p-3 rounded-lg break-all mb-3">
-              <a href={`http://localhost:3000/download/${fileId}`} target="_blank" className="text-blue-300 hover:text-blue-200 text-xs transition-colors">
-                http://localhost:3000/download/{fileId}
+              <a href={`${CLIENT_URL}/download/${fileId}`} target="_blank" className="text-blue-300 hover:text-blue-200 text-xs transition-colors">
+                {CLIENT_URL}/download/{fileId}
               </a>
             </div>
             <button 
-              onClick={() => navigator.clipboard.writeText(`http://localhost:3000/download/${fileId}`)}
+              onClick={() => navigator.clipboard.writeText(`${CLIENT_URL}/download/${fileId}`)}
               className="w-full bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded-lg text-xs font-medium transition-all"
             >
-              📋 Copy Link
+              Copy Link
             </button>
           </div>
         )}

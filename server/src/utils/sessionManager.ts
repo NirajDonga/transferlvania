@@ -41,6 +41,23 @@ class SessionManager {
       activeSessions: this.activeSessions.size,
     };
   }
+
+  getSessionsBySocket(socketId: string): string[] {
+    const fileIds: string[] = [];
+    for (const [fileId, session] of this.activeSessions.entries()) {
+      if (session.senderSocketId === socketId) {
+        fileIds.push(fileId);
+      }
+    }
+    return fileIds;
+  }
+
+  removeSocket(socketId: string) {
+    const fileIds = this.getSessionsBySocket(socketId);
+    for (const fileId of fileIds) {
+      this.activeSessions.delete(fileId);
+    }
+  }
 }
 
 export const sessionManager = new SessionManager();

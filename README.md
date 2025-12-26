@@ -112,6 +112,9 @@ TURNS_ENABLED="true"
 ```env
 # Server URL (REQUIRED)
 NEXT_PUBLIC_SERVER_URL="http://localhost:4000"
+
+# Client URL (for generating shareable links)
+NEXT_PUBLIC_CLIENT_URL="http://localhost:3000"
 ```
 
 ## Security Implementation

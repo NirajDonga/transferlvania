@@ -83,8 +83,36 @@ io.on("connection", (socket) => {
   handleResumeTransfer(socket);
   handleTransferComplete(socket);
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log('User disconnected:', socket.id);
+    
+    const fileIds = sessionManager.getSessionsBySocket(socket.id);
+    
+    for (const fileId of fileIds) {
+      try {
+        const session = await prisma.fileSession.findUnique({
+          where: { id: fileId }
+        });
+        
+        if (!session) continue;
+        
+        if (session.status === 'active') {
+          await prisma.fileSession.update({
+            where: { id: fileId },
+            data: { status: 'waiting' }
+          });
+          console.log(`Reset zombie session ${fileId} to waiting`);
+        }
+        
+        socket.to(fileId).emit("peer-disconnected", { 
+          message: "The other user has disconnected" 
+        });
+      } catch (error) {
+        console.error(`Error cleaning up session ${fileId}:`, error);
+      }
+    }
+    
+    sessionManager.removeSocket(socket.id);
   });
 });
 

@@ -252,15 +252,17 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       <div className="relative z-10 bg-white/10 backdrop-blur-xl p-10 rounded-2xl border border-white/20 shadow-2xl max-w-md w-full text-center animate-slide-up hover:shadow-pink-500/20 hover:shadow-3xl transition-all duration-300">
         <div className="mb-6 animate-fade-in">
           <div className="w-20 h-20 bg-linear-to-br from-purple-400 to-pink-400 rounded-full mx-auto mb-4 flex items-center justify-center animate-bounce shadow-lg shadow-purple-500/50 hover:shadow-pink-500/50 transition-shadow duration-500 cursor-pointer hover:scale-110">
-            <span className="text-4xl">📥</span>
+            <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+            </svg>
           </div>
           <h2 className="text-3xl font-bold mb-2 bg-linear-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent hover:scale-105 transition-transform duration-300 cursor-default drop-shadow-lg">Incoming File</h2>
         </div>
         
         {passwordRequired && (
           <div className="mb-6 animate-fade-in">
-            <p className="text-yellow-400 mb-3 text-sm flex items-center gap-2">
-              <span>🔒</span> This file is password protected
+            <p className="text-yellow-400 mb-3 text-sm">
+              This file is password protected
             </p>
             <input
               type="password"
@@ -276,7 +278,7 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
               disabled={!password}
               className="w-full bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all"
             >
-              🔓 Unlock & Continue
+              Unlock & Continue
             </button>
           </div>
         )}
