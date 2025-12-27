@@ -10,9 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout Repository
+      # Step 1: Get the code from GitHub
+      - name: Checkout code
         uses: actions/checkout@v4
       
+      # Step 2: Install Node.js version 20
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -22,27 +24,26 @@ jobs:
             server/package-lock.json
             client/package-lock.json
       
-      # Build Backend
-      - name: Build Server
+      # Step 3: Build the server (backend)
+      - name: Build server
         working-directory: ./server
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           npm ci
           npx prisma generate
           npm run build
       
-      # Build Frontend
-      - name: Build Client
+      # Step 4: Build the client (frontend)
+      - name: Build client
         working-directory: ./client
         env:
           NEXT_PUBLIC_SERVER_URL: ${{ secrets.NEXT_PUBLIC_SERVER_URL }}
+          NEXT_PUBLIC_CLIENT_URL: ${{ secrets.NEXT_PUBLIC_CLIENT_URL }}
         run: |
           npm ci
           npm run build
       
-      # Package Application
-      - name: Create Deployment Package
+      # Step 5: Package everything into one file
+      - name: Create package
         run: |
           tar -czf deploy.tar.gz \
             server/dist \
@@ -53,10 +54,11 @@ jobs:
             client/package*.json \
             client/next.config.ts \
             client/Dockerfile \
-            docker-compose.yml
+            docker-compose.yml \
+            .env.example
       
-      # Transfer to VM
-      - name: Upload to Server
+      # Step 6: Copy package to your VM
+      - name: Copy to VM
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.VM_HOST }}
@@ -65,55 +67,46 @@ jobs:
           port: 22
           source: "deploy.tar.gz"
           target: "/tmp/"
-          strip_components: 0
-          overwrite: true
-          timeout: 60s
-          command_timeout: 10m
-          ssh_option: "-o StrictHostKeyChecking=no"
       
-      # Deploy Application
-      - name: Deploy Application
+      # Step 7: Deploy on VM
+      - name: Deploy on VM
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           port: 22
-          timeout: 60s
-          command_timeout: 30m
           script: |
-            set -e
-            
-            # Setup deployment directory
+            # Go to app folder
             mkdir -p ~/transferlvania
             cd ~/transferlvania
             
-            # Extract package
+            # Unpack the package
             tar -xzf /tmp/deploy.tar.gz
             rm /tmp/deploy.tar.gz
             
-            # Create environment file
-            cat > .env << 'EOF'
+            # Create .env file with secrets
+            cat > .env << EOF
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
             CLIENT_URL=${{ secrets.CLIENT_URL }}
             NEXT_PUBLIC_SERVER_URL=${{ secrets.NEXT_PUBLIC_SERVER_URL }}
-            TURN_SECRET=${{ secrets.TURN_SECRET }}
+            NEXT_PUBLIC_CLIENT_URL=${{ secrets.NEXT_PUBLIC_CLIENT_URL }}
             NODE_ENV=production
             PORT=4000
             EOF
             
-            # Deploy with Docker
+            # Stop old containers
             docker compose down || true
+            
+            # Start new containers
             docker compose up -d --build
             
-            # Wait for services
-            sleep 10
+            # Wait for containers to start
+            sleep 15
             
-            # Run migrations
+            # Update database
             docker compose exec -T backend npx prisma migrate deploy
             
-            # Show status
+            # Check if everything is running
             docker compose ps
-
-            #added docker to vm
