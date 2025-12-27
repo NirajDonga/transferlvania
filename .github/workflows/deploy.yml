@@ -56,8 +56,7 @@ jobs:
             client/package*.json \
             client/next.config.ts \
             client/Dockerfile \
-            docker-compose.yml \
-            .env.example
+            docker-compose.yml
       
       # Step 6: Copy package to your VM
       - name: Copy to VM
