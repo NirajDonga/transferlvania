@@ -27,6 +27,8 @@ jobs:
       # Step 3: Build the server (backend)
       - name: Build server
         working-directory: ./server
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           npm ci
           npx prisma generate
