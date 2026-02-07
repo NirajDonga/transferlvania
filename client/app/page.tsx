@@ -1,280 +1,222 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { socket } from "@/lib/socket";
-import { getIceServers } from "@/lib/ice-servers";
-
-let RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
-
-const CHUNK_SIZE = 16384;
-const MAX_BUFFER_AMOUNT = 65535;
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useSignaling } from "@/hooks/useSignaling";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import { useFileStream } from "@/hooks/useFileStream";
+import { useFileHash } from "@/hooks/useFileHash";
+import type { ReceiverJoinedPayload, SignalPayload } from "@/types/socket-events";
 
 export default function Home() {
+  // UI State
   const [status, setStatus] = useState("Idle");
   const [fileId, setFileId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isTransferActive, setIsTransferActive] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
-  const [password, setPassword] = useState("");
-  const [showPasswordInput, setShowPasswordInput] = useState(false);
-  
-  const peerRef = useRef<RTCPeerConnection | null>(null);
-  const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const [oneTimeCode, setOneTimeCode] = useState<string | null>(null);
+
+  // Refs for stable values across callbacks
   const isNegotiating = useRef(false);
   const currentFileIdRef = useRef<string | null>(null);
+  const currentReceiverRef = useRef<string | null>(null);
+  const selectedFileRef = useRef<File | null>(null);
 
   const CLIENT_URL = process.env.NEXT_PUBLIC_CLIENT_URL || 'http://localhost:3000';
 
+  // Keep file ref in sync
   useEffect(() => {
-    getIceServers().then(servers => {
-      RTC_CONFIG = { iceServers: servers };
-    });
+    selectedFileRef.current = selectedFile;
+  }, [selectedFile]);
 
-    const handleReceiverJoined = ({ receiverId }: { receiverId: string }) => {
-      if (isNegotiating.current || peerRef.current) return;
+  // Initialize hooks
+  const { isHashing, calculateHash } = useFileHash({
+    onProgress: (percent) => setStatus(`Calculating hash... ${percent}%`),
+  });
+
+  const { streamFile, cancelStream } = useFileStream({
+    onProgress: setProgress,
+    onComplete: () => {
+      setStatus("File Sent Successfully!");
+      setProgress(100);
+      setIsTransferActive(false);
+    },
+    onError: (error) => {
+      console.error("Transfer Error:", error);
+      setStatus("Transfer Error");
+      setIsTransferActive(false);
+    },
+  });
+
+  // WebRTC setup with callbacks
+  const {
+    createOffer,
+    handleAnswer,
+    addIceCandidate,
+    sendData,
+    canSendMore,
+    onBufferLow,
+    closePeerConnection,
+  } = useWebRTC({
+    onIceCandidate: (candidate) => {
+      if (currentFileIdRef.current && currentReceiverRef.current) {
+        sendSignal({
+          target: currentReceiverRef.current,
+          data: { candidate },
+          fileId: currentFileIdRef.current,
+        });
+      }
+    },
+    onDataChannelOpen: () => setStatus("Connected. Waiting for Receiver to Accept..."),
+    onDataChannelClose: () => {
+      setStatus("Connection closed");
+      setIsTransferActive(false);
+    },
+    onDataChannelMessage: (data) => {
+      if (data === "START_TRANSFER" && selectedFileRef.current) {
+        setIsTransferActive(true);
+        sendFile();
+      }
+    },
+  });
+
+  // Send file using the streaming hook
+  const sendFile = useCallback(async () => {
+    const file = selectedFileRef.current;
+    if (!file) return;
+
+    setStatus("Sending File...");
+    
+    try {
+      await streamFile(
+        file,
+        (chunk) => sendData(chunk),
+        canSendMore,
+        onBufferLow
+      );
+    } catch (error) {
+      console.error("File send error:", error);
+      setStatus("Transfer Error");
+    }
+  }, [streamFile, sendData, canSendMore, onBufferLow]);
+
+  // Start P2P connection (called when receiver joins)
+  const startP2PConnection = useCallback(async (receiverId: string) => {
+    try {
+      const offer = await createOffer();
+      
+      sendSignal({
+        target: receiverId,
+        data: offer,
+        fileId: currentFileIdRef.current!,
+      });
+    } catch (err) {
+      console.error("Connection failed", err);
+      isNegotiating.current = false;
+      setStatus("Connection failed");
+    }
+  }, [createOffer]);
+
+  // Signaling setup
+  const { sendSignal, emitUploadInit, cancelTransfer } = useSignaling({
+    onReceiverJoined: useCallback((data: ReceiverJoinedPayload) => {
+      if (isNegotiating.current) return;
       
       isNegotiating.current = true;
+      currentReceiverRef.current = data.receiverId;
       setStatus("Receiver found! Initiating connection...");
-      startP2PConnection(receiverId);
-    };
+      startP2PConnection(data.receiverId);
+    }, [startP2PConnection]),
 
-    const handleSignal = async ({ data }: { data: any }) => {
-      if (!peerRef.current) return;
-      
-      if (data.type === "answer") {
-        await peerRef.current.setRemoteDescription(data);
-      } else if (data.candidate) {
-        await peerRef.current.addIceCandidate(data.candidate);
+    onSignal: useCallback(async (data: SignalPayload) => {
+      if ('type' in data.data && data.data.type === "answer") {
+        await handleAnswer(data.data as RTCSessionDescriptionInit);
+      } else if ('candidate' in data.data) {
+        await addIceCandidate(data.data.candidate as RTCIceCandidate);
       }
-    };
+    }, [handleAnswer, addIceCandidate]),
 
-    const handleTransferCancelled = ({ reason }: { reason: string }) => {
+    onTransferCancelled: useCallback(({ reason }) => {
       setIsCancelled(true);
       setIsTransferActive(false);
       setStatus(`Transfer stopped: ${reason}`);
-      if (dataChannelRef.current) {
-        dataChannelRef.current.close();
-      }
-    };
+      closePeerConnection();
+    }, [closePeerConnection]),
 
-    const handleTransferPaused = () => {
-      setIsTransferActive(false);
-      setStatus("Transfer paused by receiver");
-    };
-
-    const handleTransferResumed = () => {
-      setIsTransferActive(true);
-      setStatus("Transfer resumed");
-    };
-
-    const handleError = ({ message }: { message: string }) => {
-      console.error("Socket error:", message);
-      setStatus(`Error: ${message}`);
-      setIsTransferActive(false);
-    };
-
-    socket.on("receiver-joined", handleReceiverJoined);
-    socket.on("signal", handleSignal);
-    socket.on("transfer-cancelled", handleTransferCancelled);
-    socket.on("transfer-paused", handleTransferPaused);
-    socket.on("transfer-resumed", handleTransferResumed);
-    socket.on("error", handleError);
-
-    return () => {
-      socket.off("receiver-joined", handleReceiverJoined);
-      socket.off("signal", handleSignal);
-      socket.off("transfer-cancelled", handleTransferCancelled);
-      socket.off("transfer-paused", handleTransferPaused);
-      socket.off("transfer-resumed", handleTransferResumed);
-      socket.off("error", handleError);
-      if (peerRef.current) peerRef.current.close();
-      isNegotiating.current = false;
-    };
-  }, [selectedFile]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    if (peerRef.current) {
-        peerRef.current.close();
-        peerRef.current = null;
-    }
-    isNegotiating.current = false;
-    setProgress(0);
-    setIsCancelled(false);
-    setIsTransferActive(false);
-    setSelectedFile(file);
-    setStatus("Registering file...");
-    setShowPasswordInput(true);
-  };
-
-  const handleStartUpload = async () => {
-    if (!selectedFile) return;
-    
-    setShowPasswordInput(false);
-    setStatus("Calculating file hash...");
-    
-    const fileHash = await calculateFileHash(selectedFile);
-    
-    setStatus("Registering file...");
-    
-    socket.once("upload-created", ({ fileId, warnings }: { fileId: string; warnings?: string[] }) => {
+    onUploadCreated: useCallback(({ fileId, oneTimeCode, warnings }) => {
       setFileId(fileId);
+      setOneTimeCode(oneTimeCode);
       currentFileIdRef.current = fileId;
       setStatus("Waiting for receiver...");
       
       if (warnings && warnings.length > 0) {
         alert(`FILE SAFETY NOTICE\n\n${warnings.join('\n\n')}\n\nThe receiver will be warned about this file type.`);
       }
-    });
+    }, []),
 
-    socket.emit("upload-init", {
-      fileName: selectedFile.name,
-      fileSize: selectedFile.size,
-      fileType: selectedFile.type,
-      fileHash: fileHash,
-      password: password || undefined,
-    });
+    onError: useCallback(({ message }) => {
+      console.error("Socket error:", message);
+      setStatus(`Error: ${message}`);
+      setIsTransferActive(false);
+    }, []),
+  });
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      closePeerConnection();
+      isNegotiating.current = false;
+    };
+  }, [closePeerConnection]);
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    closePeerConnection();
+    isNegotiating.current = false;
+    setProgress(0);
+    setIsCancelled(false);
+    setIsTransferActive(false);
+    setSelectedFile(file);
+    setOneTimeCode(null);
+    setStatus("File selected. Click 'Start Upload' to begin.");
   };
 
-  const calculateFileHash = async (file: File): Promise<string> => {
-    const buffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // Start upload process
+  const handleStartUpload = async () => {
+    if (!selectedFile) return;
+
+    setStatus("Calculating file hash...");
+
+    try {
+      const fileHash = await calculateHash(selectedFile);
+      setStatus("Registering file...");
+
+      emitUploadInit({
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        fileType: selectedFile.type,
+        fileHash,
+      });
+    } catch (error) {
+      console.error("Hash calculation error:", error);
+      setStatus("Error calculating file hash");
+    }
   };
 
+  // Stop transfer
   const handleStopTransfer = () => {
     if (!currentFileIdRef.current) return;
-    
+
     setIsCancelled(true);
     setIsTransferActive(false);
     setStatus("Transfer stopped by you");
-    
-    socket.emit("cancel-transfer", { 
-      fileId: currentFileIdRef.current, 
-      reason: "Sender stopped the transfer" 
-    });
-    
-    if (dataChannelRef.current) {
-      dataChannelRef.current.close();
-    }
-  };
-
-  async function startP2PConnection(receiverId: string) {
-    try {
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      peerRef.current = pc;
-
-      const channel = pc.createDataChannel("file-transfer");
-      channel.bufferedAmountLowThreshold = MAX_BUFFER_AMOUNT; 
-      dataChannelRef.current = channel;
-
-      channel.onopen = () => setStatus("Connected. Waiting for Receiver to Accept...");
-      
-      channel.onmessage = (event) => {
-          if (event.data === "START_TRANSFER") {
-              setIsTransferActive(true);
-              sendFile();
-          }
-      };
-
-      channel.onclose = () => {
-        if (!isCancelled) {
-          setStatus("Connection closed");
-          setIsTransferActive(false);
-        }
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && currentFileIdRef.current) {
-          socket.emit("signal", { 
-            target: receiverId, 
-            data: { candidate: event.candidate },
-            fileId: currentFileIdRef.current 
-          });
-        }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit("signal", { 
-        target: receiverId, 
-        data: offer,
-        fileId: currentFileIdRef.current 
-      });
-    } catch (err) {
-      console.error("Connection failed", err);
-      isNegotiating.current = false;
-    }
-  }
-
-  const sendFile = async () => {
-    if (!selectedFile || !dataChannelRef.current) return;
-    
-    setStatus("Sending File...");
-    const channel = dataChannelRef.current;
-    const reader = new FileReader();
-    let offset = 0;
-
-    reader.onload = () => {
-      if (!reader.result) return;
-      
-      if (isCancelled) {
-        setStatus("Transfer stopped");
-        return;
-      }
-      
-      if (channel.readyState !== 'open') {
-        console.error("Channel closed during transfer");
-        setStatus("Connection lost");
-        setIsTransferActive(false);
-        return;
-      }
-      
-      try {
-        const chunkSize = (reader.result as ArrayBuffer).byteLength;
-        channel.send(reader.result as ArrayBuffer);
-        offset += chunkSize;
-        
-        const percent = Math.round((offset / selectedFile.size) * 100);
-        setProgress(percent);
-
-        if (offset < selectedFile.size) {
-            if (channel.bufferedAmount > channel.bufferedAmountLowThreshold) {
-                channel.onbufferedamountlow = () => {
-                    channel.onbufferedamountlow = null;
-                    if (!isCancelled && channel.readyState === 'open') {
-                      readSlice(offset);
-                    }
-                };
-            } else {
-                readSlice(offset);
-            }
-        } else {
-          console.log("All chunks sent!");
-          setStatus("File Sent Successfully!");
-          setProgress(100);
-          setIsTransferActive(false);
-        }
-      } catch (error) {
-        console.error("Send Error:", error);
-        setStatus("Transfer Error");
-        setIsTransferActive(false);
-      }
-    };
-
-    const readSlice = (currentOffset: number) => {
-      if (isCancelled) return;
-      const slice = selectedFile.slice(currentOffset, currentOffset + CHUNK_SIZE);
-      reader.readAsArrayBuffer(slice);
-    };
-
-    readSlice(0); 
+    cancelStream();
+    cancelTransfer(currentFileIdRef.current, "Sender stopped the transfer");
+    closePeerConnection();
   };
 
   return (
@@ -312,38 +254,36 @@ export default function Home() {
           </div>
           <input type="file" onChange={handleFileSelect} className="hidden"/>
         </label>
-        
-        {showPasswordInput && selectedFile && (
+
+        {/* Start Upload Button */}
+        {selectedFile && !fileId && (
           <div className="mb-6 animate-fade-in">
-            <label className="block text-sm text-purple-200 mb-2">Optional Password Protection</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Leave empty for no password"
-              className="w-full bg-black/30 border border-purple-400/50 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 mb-3"
-            />
+            <p className="text-sm text-purple-200 mb-3">
+              Selected: <span className="font-semibold">{selectedFile.name}</span>
+              <span className="text-gray-400 ml-2">({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)</span>
+            </p>
             <div className="flex gap-2">
               <button
                 onClick={handleStartUpload}
-                className="flex-1 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
+                disabled={isHashing}
+                className="flex-1 bg-linear-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition-all"
               >
-                {password ? "Start with Password" : "Start Upload"}
+                {isHashing ? "Hashing..." : "Start Upload"}
               </button>
               <button
                 onClick={() => {
                   setSelectedFile(null);
-                  setShowPasswordInput(false);
-                  setPassword("");
+                  setStatus("Idle");
                 }}
-                className="bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded-lg transition-all"
+                className="bg-white/10 hover:bg-white/20 text-white py-3 px-4 rounded-lg transition-all"
               >
                 Cancel
               </button>
             </div>
           </div>
         )}
-        
+
+        {/* Status Display */}
         <div className="mb-6 p-4 bg-linear-to-r from-purple-500/20 to-blue-500/20 rounded-lg border border-purple-400/30">
           <p className="text-purple-200 font-medium text-sm">{status}</p>
         </div>
@@ -373,20 +313,42 @@ export default function Home() {
 
         {fileId && (
           <div className="bg-linear-to-br from-purple-500/20 to-blue-500/20 p-5 rounded-xl border border-purple-400/30 backdrop-blur-sm">
-            <p className="text-purple-200 mb-3 font-semibold text-sm">
-              Share this link:
-            </p>
-            <div className="bg-black/30 p-3 rounded-lg break-all mb-3">
-              <a href={`${CLIENT_URL}/download/${fileId}`} target="_blank" className="text-blue-300 hover:text-blue-200 text-xs transition-colors">
-                {CLIENT_URL}/download/{fileId}
-              </a>
+            {/* One-Time Code Display */}
+            {oneTimeCode && (
+              <div className="mb-4">
+                <p className="text-purple-200 mb-2 font-semibold text-sm">
+                  One-Time Connection Code:
+                </p>
+                <div className="bg-black/40 p-4 rounded-lg mb-2">
+                  <p className="text-3xl font-mono font-bold text-green-400 tracking-widest text-center select-all">
+                    {oneTimeCode}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => navigator.clipboard.writeText(oneTimeCode)}
+                  className="w-full bg-green-500/20 hover:bg-green-500/30 text-green-300 py-2 px-4 rounded-lg text-xs font-medium transition-all border border-green-500/30"
+                >
+                  Copy Code
+                </button>
+              </div>
+            )}
+
+            <div className="border-t border-purple-400/20 pt-4">
+              <p className="text-purple-200 mb-3 font-semibold text-sm">
+                Or share this link:
+              </p>
+              <div className="bg-black/30 p-3 rounded-lg break-all mb-3">
+                <a href={`${CLIENT_URL}/download/${fileId}`} target="_blank" className="text-blue-300 hover:text-blue-200 text-xs transition-colors">
+                  {CLIENT_URL}/download/{fileId}
+                </a>
+              </div>
+              <button 
+                onClick={() => navigator.clipboard.writeText(`${CLIENT_URL}/download/${fileId}`)}
+                className="w-full bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded-lg text-xs font-medium transition-all"
+              >
+                Copy Link
+              </button>
             </div>
-            <button 
-              onClick={() => navigator.clipboard.writeText(`${CLIENT_URL}/download/${fileId}`)}
-              className="w-full bg-white/10 hover:bg-white/20 text-white py-2 px-4 rounded-lg text-xs font-medium transition-all"
-            >
-              Copy Link
-            </button>
           </div>
         )}
       </div>

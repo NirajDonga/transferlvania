@@ -1,79 +1,133 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
-import { socket } from "@/lib/socket";
-import { getIceServers } from "@/lib/ice-servers";
-
-let RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+import { useEffect, useState, useRef, use, useCallback } from "react";
+import { useSignaling } from "@/hooks/useSignaling";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import { useFileHash } from "@/hooks/useFileHash";
+import type { FileMetaData, SignalPayload, ErrorPayload, TransferCancelledPayload } from "@/types/socket-events";
 
 export default function DownloadPage({ params }: { params: Promise<{ fileId: string }> }) {
   const resolvedParams = use(params);
   const { fileId } = resolvedParams;
 
-  const [status, setStatus] = useState("Connecting...");
-  const [fileMeta, setFileMeta] = useState<any>(null);
-  const fileMetaRef = useRef<any>(null);
-  
+  // UI State
+  const [status, setStatus] = useState("Enter the connection code to start");
+  const [fileMeta, setFileMeta] = useState<FileMetaData | null>(null);
   const [progress, setProgress] = useState(0);
   const [isP2PReady, setIsP2PReady] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
-  const [passwordRequired, setPasswordRequired] = useState(false);
-  const [password, setPassword] = useState("");
-  
-  const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const [codeRequired, setCodeRequired] = useState(true);
+  const [code, setCode] = useState("");
+
+  // Refs
+  const fileMetaRef = useRef<FileMetaData | null>(null);
   const writerRef = useRef<WritableStreamDefaultWriter | null>(null);
   const streamSaverRef = useRef<any>(null);
   const receivedBytes = useRef(0);
   const isCancelledRef = useRef(false);
   const lastProgress = useRef(0);
-  const fileStreamRef = useRef<any>(null);
   const receivedChunksRef = useRef<Uint8Array[]>([]);
+  const senderIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    getIceServers().then(servers => {
-      RTC_CONFIG = { iceServers: servers };
-    });
+  // Hash verification hook
+  const { verifyHash } = useFileHash();
 
-    const initStreamSaver = async () => {
-      try {
-        const streamSaver = (await import("streamsaver")).default;
-        streamSaver.mitm = 'https://jimmywarting.github.io/StreamSaver.js/mitm.html?version=2.0.0';
-        streamSaverRef.current = streamSaver;
-      } catch (err) { console.error("StreamSaver load error:", err); }
-    };
-    initStreamSaver();
-
-    const tryJoinRoom = (pwd?: string) => {
-      socket.emit("join-room", { fileId, password: pwd });
-    };
-
-    socket.on("error", (error) => {
-      if (error.passwordRequired) {
-        setPasswordRequired(true);
-        setStatus("Password required");
-      } else {
-        setStatus(error.message || "Error occurred");
+  // WebRTC setup
+  const {
+    handleOffer,
+    addIceCandidate,
+    closePeerConnection,
+    getDataChannel,
+  } = useWebRTC({
+    onIceCandidate: (candidate) => {
+      if (senderIdRef.current) {
+        sendSignal({
+          target: senderIdRef.current,
+          data: { candidate },
+          fileId,
+        });
       }
-    });
+    },
+    onDataChannelOpen: () => {
+      setStatus("Connection Established. Waiting for you to accept.");
+      setIsP2PReady(true);
+    },
+    onDataChannelClose: () => {
+      if (!isCancelledRef.current) {
+        setStatus("Connection closed by Sender.");
+        setIsDownloading(false);
+      }
+    },
+    onDataChannelMessage: async (data) => {
+      if (isCancelledRef.current || !writerRef.current) return;
 
-    socket.on("file-meta", (meta: {
-      fileName: string;
-      fileSize: number;
-      fileType: string;
-      fileHash?: string;
-      isDangerous?: boolean;
-      warnings?: string[];
-    }) => {
+      try {
+        const chunkArray = new Uint8Array(data as ArrayBuffer);
+        receivedChunksRef.current.push(chunkArray);
+        
+        await writerRef.current.write(chunkArray);
+        
+        receivedBytes.current += (data as ArrayBuffer).byteLength;
+        const meta = fileMetaRef.current;
+        
+        if (meta?.fileSize) {
+          const total = meta.fileSize;
+          const percent = Math.round((receivedBytes.current / total) * 100);
+          
+          if (percent - lastProgress.current >= 1 || percent === 100) {
+            lastProgress.current = percent;
+            setProgress(percent);
+          }
+
+          if (receivedBytes.current >= total) {
+            await handleTransferComplete();
+          }
+        }
+      } catch (err) {
+        console.error("Write error:", err);
+        setStatus("Download error");
+        setIsDownloading(false);
+      }
+    },
+  });
+
+  // Handle transfer completion with hash verification
+  const handleTransferComplete = useCallback(async () => {
+    setStatus("Verifying file integrity...");
+    
+    if (writerRef.current) {
+      await writerRef.current.close();
+      writerRef.current = null;
+    }
+    
+    const meta = fileMetaRef.current;
+    if (meta?.fileHash) {
+      const isValid = await verifyHash(receivedChunksRef.current, meta.fileHash);
+      
+      if (!isValid) {
+        setStatus("Error: File integrity check failed!");
+        alert("File integrity verification failed. The downloaded file may be corrupted.");
+      } else {
+        setStatus("Download Complete! File verified.");
+      }
+    } else {
+      setStatus("Download Complete!");
+    }
+    
+    setIsDownloading(false);
+    emitTransferComplete(fileId);
+  }, [fileId, verifyHash]);
+
+  // Signaling setup
+  const { sendSignal, joinRoom, cancelTransfer, emitTransferComplete } = useSignaling({
+    onFileMeta: useCallback((meta: FileMetaData) => {
       if (meta.isDangerous && meta.warnings) {
         const proceed = confirm(
           `SECURITY WARNING\n\n${meta.warnings.join('\n\n')}\n\nFile: ${meta.fileName}\n\nDo you want to proceed with downloading this potentially dangerous file?`
         );
         
         if (!proceed) {
-          socket.disconnect();
           setStatus("Download cancelled for safety");
           return;
         }
@@ -81,135 +135,81 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       
       setFileMeta(meta);
       fileMetaRef.current = meta;
-      setPasswordRequired(false);
+      setCodeRequired(false);
       setStatus("Waiting for Sender...");
-    });
+    }, []),
 
-    tryJoinRoom();
-
-    socket.on("signal", async ({ from, data }: { from: string; data: any }) => {
-      if (data.type === "offer") {
-        const pc = new RTCPeerConnection(RTC_CONFIG);
+    onSignal: useCallback(async (data: SignalPayload) => {
+      if ('type' in data.data && data.data.type === "offer") {
+        senderIdRef.current = data.from || null;
+        const answer = await handleOffer(data.data as RTCSessionDescriptionInit);
         
-        pc.ondatachannel = (event) => {
-          const channel = event.channel;
-          
-          channel.binaryType = "arraybuffer";
-
-          dataChannelRef.current = channel;
-
-          channel.onopen = () => {
-             setStatus("Connection Established. Waiting for you to accept.");
-             setIsP2PReady(true);
-          };
-          
-          channel.onclose = () => {
-             if (!isCancelledRef.current) {
-                setStatus("Connection closed by Sender.");
-                setIsDownloading(false);
-             }
-          };
-          
-          channel.onmessage = async (e) => {
-            if (isCancelledRef.current || !writerRef.current) return;
-
-            const chunk = e.data;
-
-            try {
-              const chunkArray = new Uint8Array(chunk);
-              receivedChunksRef.current.push(chunkArray);
-              
-              await writerRef.current.write(chunkArray);
-              
-              receivedBytes.current += chunk.byteLength;
-              const meta = fileMetaRef.current;
-              
-              if (meta?.fileSize) {
-                 const total = parseInt(meta.fileSize);
-                 const percent = Math.round((receivedBytes.current / total) * 100);
-                 
-                 if (percent - lastProgress.current >= 1 || percent === 100) {
-                    lastProgress.current = percent;
-                    setProgress(percent);
-                 }
-
-                 if (receivedBytes.current >= total) {
-                    setStatus("Verifying file integrity...");
-                    
-                    if (writerRef.current) {
-                        await writerRef.current.close();
-                        writerRef.current = null;
-                    }
-                    
-                    if (meta.fileHash) {
-                      const receivedHash = await calculateHash(receivedChunksRef.current);
-                      
-                      if (receivedHash !== meta.fileHash) {
-                        setStatus("Error: File integrity check failed!");
-                        alert("File integrity verification failed. The downloaded file may be corrupted.");
-                      } else {
-                        setStatus("Download Complete! File verified.");
-                      }
-                    } else {
-                      setStatus("Download Complete!");
-                    }
-                    
-                    setIsDownloading(false);
-                    socket.emit("transfer-complete", { fileId });
-                 }
-              }
-            } catch (err) {
-              console.error("Write error:", err);
-              setStatus("Download error");
-              setIsDownloading(false);
-            }
-          };
-        };
-
-        pc.onicecandidate = (event) => {
-           if (event.candidate) socket.emit("signal", { target: from, data: { candidate: event.candidate }, fileId });
-        };
-
-        await pc.setRemoteDescription(data);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit("signal", { target: from, data: answer, fileId });
+        if (data.from) {
+          sendSignal({
+            target: data.from,
+            data: answer,
+            fileId,
+          });
+        }
+      } else if ('candidate' in data.data) {
+        await addIceCandidate(data.data.candidate as RTCIceCandidate);
       }
-    });
+    }, [handleOffer, addIceCandidate, fileId]),
+
+    onError: useCallback((error: ErrorPayload) => {
+      if (error.invalidCode) {
+        setStatus("Invalid or expired code. Please check and try again.");
+        setCodeRequired(true);
+      } else {
+        setStatus(error.message || "Error occurred");
+      }
+    }, []),
+
+    onTransferCancelled: useCallback(({ reason }: TransferCancelledPayload) => {
+      isCancelledRef.current = true;
+      setStatus(`Transfer stopped: ${reason}`);
+      setIsDownloading(false);
+      closePeerConnection();
+    }, [closePeerConnection]),
+  });
+
+  // Initialize StreamSaver
+  useEffect(() => {
+    const initStreamSaver = async () => {
+      try {
+        const streamSaver = (await import("streamsaver")).default;
+        streamSaver.mitm = 'https://jimmywarting.github.io/StreamSaver.js/mitm.html?version=2.0.0';
+        streamSaverRef.current = streamSaver;
+      } catch (err) {
+        console.error("StreamSaver load error:", err);
+      }
+    };
+    initStreamSaver();
 
     return () => {
-      socket.off("file-meta");
-      socket.off("signal");
-      socket.off("error");
       if (writerRef.current) {
         writerRef.current.abort().catch(() => {});
       }
+      closePeerConnection();
     };
-  }, [fileId]);
+  }, [closePeerConnection]);
 
-  const handlePasswordSubmit = () => {
-    if (!password) return;
-    setStatus("Verifying password...");
-    socket.emit("join-room", { fileId, password });
-  };
-
-  const calculateHash = async (chunks: Uint8Array[]): Promise<string> => {
-    const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-    const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const handleCodeSubmit = () => {
+    if (!code) return;
+    setStatus("Verifying code...");
+    joinRoom(fileId, code);
   };
 
   const handleAcceptDownload = async () => {
-    if (!streamSaverRef.current || !dataChannelRef.current || !fileMetaRef.current) {
-        alert("Not ready yet. Please wait.");
-        return;
+    if (!streamSaverRef.current || !fileMetaRef.current) {
+      alert("Not ready yet. Please wait.");
+      return;
+    }
+
+    const channel = getDataChannel();
+    if (!channel || channel.readyState !== 'open') {
+      alert("Connection not ready. Please wait.");
+      return;
     }
 
     setIsSelectingLocation(true);
@@ -221,25 +221,15 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
     
     try {
       const fileStream = streamSaverRef.current.createWriteStream(fileMetaRef.current.fileName, {
-          size: parseInt(fileMetaRef.current.fileSize)
+        size: fileMetaRef.current.fileSize
       });
-      fileStreamRef.current = fileStream;
       const writer = fileStream.getWriter();
       writerRef.current = writer;
       
-      await new Promise((resolve) => {
-        const checkReady = () => {
-          if (writer.ready) {
-            resolve(true);
-          } else {
-            writer.ready.then(resolve);
-          }
-        };
-        checkReady();
-      });
+      await writer.ready;
       
       setStatus("Downloading...");
-      dataChannelRef.current.send("START_TRANSFER");
+      channel.send("START_TRANSFER");
       
       setIsSelectingLocation(false);
       setIsP2PReady(false);
@@ -248,26 +238,25 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
       console.error("Download start error or cancelled:", err);
       setStatus("Download cancelled");
       setIsSelectingLocation(false);
-      setIsP2PReady(true); 
+      setIsP2PReady(true);
     }
-  };  const handleCancel = () => {
+  };
+
+  const handleCancel = () => {
     isCancelledRef.current = true;
     
-    socket.emit("cancel-transfer", { 
-      fileId, 
-      reason: "Receiver cancelled the transfer" 
-    });
+    cancelTransfer(fileId, "Receiver cancelled the transfer");
     
     if (writerRef.current) {
-        writerRef.current.abort().catch(() => {});
-        writerRef.current = null;
+      writerRef.current.abort().catch(() => {});
+      writerRef.current = null;
     }
     
     receivedChunksRef.current = [];
     setProgress(0);
     receivedBytes.current = 0;
     setIsDownloading(false);
-    setIsP2PReady(true); 
+    setIsP2PReady(true);
     setStatus("Transfer stopped.");
   };
 
@@ -292,38 +281,39 @@ export default function DownloadPage({ params }: { params: Promise<{ fileId: str
           <h2 className="text-3xl font-bold mb-2 bg-linear-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent hover:scale-105 transition-transform duration-300 cursor-default drop-shadow-lg">Incoming File</h2>
         </div>
         
-        {passwordRequired && (
+        {codeRequired && (
           <div className="mb-6 animate-fade-in">
-            <p className="text-yellow-400 mb-3 text-sm">
-              This file is password protected
+            <p className="text-purple-200 mb-3 text-sm">
+              Enter the one-time code from the sender
             </p>
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-              placeholder="Enter password"
-              className="w-full bg-black/30 border border-purple-400/50 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 mb-3"
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyPress={(e) => e.key === 'Enter' && handleCodeSubmit()}
+              placeholder="Enter code (e.g., ABC123)"
+              className="w-full bg-black/30 border border-purple-400/50 rounded-lg px-4 py-3 text-white text-center text-2xl font-mono tracking-widest placeholder-gray-500 focus:outline-none focus:border-purple-400 mb-3 uppercase"
               autoFocus
+              maxLength={8}
             />
             <button
-              onClick={handlePasswordSubmit}
-              disabled={!password}
+              onClick={handleCodeSubmit}
+              disabled={!code || code.length < 4}
               className="w-full bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all"
             >
-              Unlock & Continue
+              Connect
             </button>
           </div>
         )}
 
-        {fileMeta && !passwordRequired && (
+        {fileMeta && !codeRequired && (
           <div className="mb-6">
             <p className="text-xl text-blue-400 font-semibold">{fileMeta.fileName}</p>
-            <p className="text-gray-400 text-sm">Size: {(parseInt(fileMeta.fileSize) / 1024 / 1024).toFixed(2)} MB</p>
+            <p className="text-gray-400 text-sm">Size: {(fileMeta.fileSize / 1024 / 1024).toFixed(2)} MB</p>
           </div>
         )}
 
-        {isP2PReady && !isDownloading && !passwordRequired && (
+        {isP2PReady && !isDownloading && !codeRequired && (
           <div className="flex flex-col items-center gap-2 mb-6">
             <button 
               onClick={handleAcceptDownload}

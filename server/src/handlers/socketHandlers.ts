@@ -1,7 +1,6 @@
 import { Socket } from "socket.io";
 import prisma from "../utils/prisma.js";
 import { validateFileName, validateFileSize, validateFileType, validateFileExtension, validateUUID, validateSocketId } from "../utils/validation.js";
-import { hashPassword, verifyPassword, validatePassword } from "../utils/password.js";
 import { sessionManager } from "../utils/sessionManager.js";
 import { encrypt, decrypt } from "../utils/encryption.js";
 
@@ -57,36 +56,22 @@ export function handleUploadInit(socket: Socket) {
         return;
       }
 
-      let passwordHash: string | null = null;
-      if (data.password) {
-        if (typeof data.password !== 'string') {
-          socket.emit("error", { message: "Invalid password format" });
-          return;
-        }
-        const passwordValidation = validatePassword(data.password);
-        if (!passwordValidation.valid) {
-          socket.emit("error", { message: passwordValidation.error });
-          return;
-        }
-        passwordHash = hashPassword(data.password);
-      }
-
       const session = await prisma.fileSession.create({
         data: {
           fileName: encrypt(fileNameValidation.sanitized!),
           fileSize: BigInt(data.fileSize),
           fileType: encrypt(fileTypeValidation.sanitized!),
           fileHash: data.fileHash,
-          passwordHash: passwordHash,
           status: "waiting",
         },
       });
       
-      sessionManager.register(session.id, socket.id);
+      const oneTimeCode = sessionManager.register(session.id, socket.id);
       socket.join(session.id);
 
       socket.emit("upload-created", { 
-        fileId: session.id
+        fileId: session.id,
+        oneTimeCode: oneTimeCode
       });
     } catch (error) {
       console.error('Database error on upload-init:', error);
@@ -96,10 +81,15 @@ export function handleUploadInit(socket: Socket) {
 }
 
 export function handleJoinRoom(socket: Socket, io: any) {
-  socket.on("join-room", async ({ fileId, password }) => {
+  socket.on("join-room", async ({ fileId, code }) => {
     try {
       if (!fileId || typeof fileId !== 'string') {
         socket.emit("error", { message: "File ID is required" });
+        return;
+      }
+
+      if (!code || typeof code !== 'string') {
+        socket.emit("error", { message: "Connection code is required", invalidCode: true });
         return;
       }
 
@@ -124,16 +114,11 @@ export function handleJoinRoom(socket: Socket, io: any) {
         return;
       }
 
-      if (session.passwordHash) {
-        if (!password || typeof password !== 'string') {
-          socket.emit("error", { message: "Password required", passwordRequired: true });
-          return;
-        }
-
-        if (!verifyPassword(password, session.passwordHash)) {
-          socket.emit("error", { message: "Incorrect password", passwordRequired: true });
-          return;
-        }
+      // Validate one-time code
+      const codeValidation = sessionManager.validateCode(fileId, code);
+      if (!codeValidation.valid) {
+        socket.emit("error", { message: codeValidation.error, invalidCode: true });
+        return;
       }
 
       if (session.status === "completed") {
@@ -212,54 +197,14 @@ export function handleSignal(socket: Socket, io: any) {
   });
 }
 
-export function handleTransferStateChange(socket: Socket) {
-  socket.on("transfer-state-change", ({ fileId, state, reason }) => {
-    try {
-      if (!fileId || typeof fileId !== 'string') return;
-      if (!state || typeof state !== 'string') return;
-      
-      socket.to(fileId).emit("transfer-state-update", { state, reason, from: socket.id });
-    } catch (error) {
-      console.error('Error in transfer-state-change:', error);
-    }
-  });
-}
-
-export function handlePauseTransfer(socket: Socket) {
-  socket.on("pause-transfer", ({ fileId }) => {
-    try {
-      if (!fileId || typeof fileId !== 'string') return;
-      if (!sessionManager.isSender(fileId, socket.id)) return;
-      
-      socket.to(fileId).emit("transfer-paused", { from: socket.id });
-    } catch (error) {
-      console.error('Error in pause-transfer:', error);
-    }
-  });
-}
-
 export function handleCancelTransfer(socket: Socket) {
   socket.on("cancel-transfer", ({ fileId, reason }) => {
     try {
       if (!fileId || typeof fileId !== 'string') return;
-      if (!sessionManager.isSender(fileId, socket.id)) return;
       
-      socket.to(fileId).emit("transfer-cancelled", { reason, from: socket.id });
+      socket.to(fileId).emit("transfer-cancelled", { reason });
     } catch (error) {
       console.error('Error in cancel-transfer:', error);
-    }
-  });
-}
-
-export function handleResumeTransfer(socket: Socket) {
-  socket.on("resume-transfer", ({ fileId }) => {
-    try {
-      if (!fileId || typeof fileId !== 'string') return;
-      if (!sessionManager.isSender(fileId, socket.id)) return;
-      
-      socket.to(fileId).emit("transfer-resumed", { from: socket.id });
-    } catch (error) {
-      console.error('Error in resume-transfer:', error);
     }
   });
 }
